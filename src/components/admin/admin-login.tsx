@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 export function AdminLogin() {
   const router = useRouter();
-  const [email, setEmail] = useState("edward@example.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,7 +18,7 @@ export function AdminLogin() {
     const response = await fetch("/api/admin/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password: password || "preview" })
+      body: JSON.stringify({ email, password })
     });
     const json = (await response.json()) as { error?: string };
     setLoading(false);
@@ -66,7 +66,8 @@ export function AdminLogin() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
-                placeholder="Preview mode accepts any password"
+                placeholder="Enter your password"
+                required
               />
             </div>
             {error ? <p className="muted">{error}</p> : null}
