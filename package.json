@@ -1,0 +1,59 @@
+{
+  "name": "edward-jessica-wedding",
+  "version": "1.0.0",
+  "description": "Production MVP wedding invitation website for Edward and Jessica.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "qa:static": "npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e",
+    "qa:content": "node work/check-content-state.mjs",
+    "qa:supabase": "node work/check-supabase.mjs",
+    "qa:live": "node work/check-supabase.mjs && node work/live-qa.mjs && node work/admin-ui-live-qa.mjs && node work/media-live-qa.mjs && node work/media-ui-live-qa.mjs && node work/publish-media-live-qa.mjs && node work/check-content-state.mjs"
+  },
+  "keywords": [
+    "wedding",
+    "nextjs",
+    "supabase",
+    "vercel"
+  ],
+  "author": "Edward & Jessica",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.107.0",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.17.0",
+    "next": "^16.2.7",
+    "papaparse": "^5.5.3",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^25.9.1",
+    "@types/papaparse": "^5.5.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.7",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.5.15",
+    "prettier": "^3.8.3",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
