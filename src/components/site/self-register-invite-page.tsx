@@ -1,12 +1,13 @@
 "use client";
 
-import { CalendarDays, CheckCircle2, MapPin, Send, Users, Utensils } from "lucide-react";
+import { CalendarDays, CheckCircle2, Send, Users, Utensils } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useRef, useState } from "react";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { SaveDateSection } from "@/components/site/save-date-section";
+import { StorySection } from "@/components/site/story-section";
 import { copy, text } from "@/lib/i18n";
-import { buildGoogleCalendarUrl } from "@/lib/rsvp";
 import type { EventKey, InvitationGroup, Language, MealPreference, WeddingContent } from "@/lib/types";
 
 export function SelfRegisterInvitePage({
@@ -18,11 +19,20 @@ export function SelfRegisterInvitePage({
 }) {
   const [language, setLanguage] = useState<Language>(content.defaultLanguage);
   const [savedInvitation, setSavedInvitation] = useState<InvitationGroup | null>(null);
+  const [showRsvpForm, setShowRsvpForm] = useState(false);
+  const detailsRef = useRef<HTMLElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
   const c = copy[language];
 
+  function begin() {
+    detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function revealForm() {
-    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setShowRsvpForm(true);
+    window.setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
   }
 
   return (
@@ -33,49 +43,45 @@ export function SelfRegisterInvitePage({
           <div>
             <LanguageToggle language={language} onChange={setLanguage} />
             <p className="hero-kicker" style={{ marginTop: 34 }}>
-              Open Invitation
+              {c.genericInviteGreeting}
             </p>
-            <h1 className="hero-title serif">{content.coupleName.replace("&", "+")}</h1>
+            <h1 className="hero-title serif">{content.coupleName}</h1>
             <p className="hero-meta">{text(content.openingText, language)}</p>
-            <div className="hero-actions">
-              <button className="button button-primary" type="button" onClick={revealForm}>
-                <Users size={18} />
-                Register RSVP
+            <div className="hero-actions hero-actions-centered">
+              <button className="button button-primary hero-open-button" type="button" onClick={begin}>
+                OPEN INVITATION
               </button>
-              <a className="button button-secondary" href={content.venue.mapsUrl} target="_blank" rel="noreferrer">
-                <MapPin size={18} />
-                {c.openMap}
-              </a>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="section">
-        <div className="container grid-2">
-          <div>
+      <section className="section" ref={detailsRef}>
+        <div className="container">
+          <div className="centered-section-copy">
             <p className="eyebrow">{c.details}</p>
             <h2 className="title serif">{text(content.introText, language)}</h2>
-          </div>
-          <div className="invite-panel">
-            <p className="eyebrow">Self-registration</p>
-            <p style={{ marginTop: 10 }}>
-              Use this form if you received the general wedding invitation code. Your RSVP will be counted immediately.
-            </p>
-            <p className="muted" style={{ marginTop: 16 }}>
-              Admins can still edit your RSVP status after submission.
-            </p>
+            <figure className="invitation-section-photo">
+              <Image
+                src="https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/invitation-section-20260507-196.jpg"
+                alt=""
+                fill
+                sizes="(max-width: 860px) calc(100vw - 48px), 980px"
+              />
+            </figure>
           </div>
         </div>
       </section>
 
+      <SaveDateSection content={content} labels={c} />
+
       {content.events.length ? (
         <section className="section">
           <div className="container">
-            <div className="section-heading">
+            <div className="section-heading section-heading-centered">
               <div>
                 <p className="eyebrow">{c.schedule}</p>
-                <h2 className="title serif">Your Invitation</h2>
+                <h2 className="title serif">{c.scheduleTitle}</h2>
               </div>
             </div>
             <div style={{ display: "grid", gap: 14 }}>
@@ -91,9 +97,8 @@ export function SelfRegisterInvitePage({
                   </div>
                   <a
                     className="button button-muted"
-                    href={buildGoogleCalendarUrl(eventItem, content.coupleName, content.timezone)}
-                    target="_blank"
-                    rel="noreferrer"
+                    href="/api/calendar"
+                    download="edward-jessica-wedding.ics"
                   >
                     <CalendarDays size={17} />
                     {c.addToCalendar}
@@ -105,40 +110,86 @@ export function SelfRegisterInvitePage({
         </section>
       ) : null}
 
-      <section className="section" ref={formRef}>
-        <div className="container rsvp-grid">
-          <div>
-            <p className="eyebrow">Register RSVP</p>
-            <h2 className="title serif">Tell us who is coming</h2>
-            <p className="muted" style={{ marginTop: 14 }}>
-              This creates a guest group instantly from the generic code.
-            </p>
-          </div>
-          {savedInvitation ? (
-            <div className="invite-panel">
-              <p className="eyebrow">
-                <CheckCircle2 size={15} style={{ display: "inline", marginRight: 6 }} />
-                RSVP saved
-              </p>
-              <h3 className="serif" style={{ fontSize: "2rem", marginTop: 10 }}>
-                Thank you, {savedInvitation.groupName}
-              </h3>
-              <p className="muted" style={{ marginTop: 12 }}>
-                Your RSVP has been tentatively accepted and counted. Your personal invitation code is{" "}
-                {savedInvitation.code}.
-              </p>
-              <Link className="button button-muted" href={`/invite/${savedInvitation.code}`} style={{ marginTop: 20 }}>
-                View your invite
-              </Link>
+      <StorySection language={language} />
+
+      {content.gallery.length ? (
+        <section className="section">
+          <div className="container">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">{c.gallery}</p>
+                <h2 className="title serif">White, Champagne, Gold</h2>
+              </div>
             </div>
-          ) : (
-            <SelfRegisterForm
-              accessCode={accessCode}
-              events={content.events}
-              language={language}
-              onSaved={setSavedInvitation}
-            />
-          )}
+            <div className="gallery-grid">
+              {content.gallery.map((asset) => (
+                <figure className="gallery-item" key={asset.id}>
+                  <Image src={asset.url} alt={text(asset.alt, language)} fill sizes="(max-width: 860px) 100vw, 33vw" />
+                </figure>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="section" id="rsvp">
+        <div className="container">
+          <div className="rsvp-callout">
+            <div>
+              <p className="eyebrow">Register RSVP</p>
+              <h2 className="serif" style={{ fontSize: "clamp(2.2rem, 6vw, 5rem)", lineHeight: 0.95 }}>
+                {savedInvitation ? "Your RSVP is saved" : "Ready to RSVP?"}
+              </h2>
+              <p className="muted" style={{ marginTop: 14 }}>
+                {savedInvitation
+                  ? "Thank you. Your RSVP has been saved below."
+                  : "Please review the wedding details above before registering your attendance."}
+              </p>
+            </div>
+            {savedInvitation ? null : (
+              <button className="button button-primary rsvp-main-button" type="button" onClick={revealForm}>
+                <Users size={18} />
+                Register RSVP
+              </button>
+            )}
+          </div>
+
+          {showRsvpForm || savedInvitation ? (
+            <div ref={formRef} id="self-rsvp-form" className="rsvp-grid" style={{ marginTop: 24 }}>
+              <div>
+                <p className="eyebrow">Register RSVP</p>
+                <h2 className="title serif">Tell us who is coming</h2>
+                <p className="muted" style={{ marginTop: 14 }}>
+                  This creates a guest group instantly from the generic code.
+                </p>
+              </div>
+              {savedInvitation ? (
+                <div className="invite-panel">
+                  <p className="eyebrow">
+                    <CheckCircle2 size={15} style={{ display: "inline", marginRight: 6 }} />
+                    RSVP saved
+                  </p>
+                  <h3 className="serif" style={{ fontSize: "2rem", marginTop: 10 }}>
+                    Thank you, {savedInvitation.groupName}
+                  </h3>
+                  <p className="muted" style={{ marginTop: 12 }}>
+                    Your RSVP has been tentatively accepted and counted. Your personal invitation code is{" "}
+                    {savedInvitation.code}.
+                  </p>
+                  <Link className="button button-muted" href={`/invite/${savedInvitation.code}`} style={{ marginTop: 20 }}>
+                    View your invite
+                  </Link>
+                </div>
+              ) : (
+                <SelfRegisterForm
+                  accessCode={accessCode}
+                  events={content.events}
+                  language={language}
+                  onSaved={setSavedInvitation}
+                />
+              )}
+            </div>
+          ) : null}
         </div>
       </section>
     </main>
