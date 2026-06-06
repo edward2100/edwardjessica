@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGoogleCalendarUrl,
+  buildWeddingCalendarIcs,
   buildNameInviteCode,
   buildWhatsAppUrl,
   GENERIC_INVITE_CODE,
@@ -54,5 +55,14 @@ describe("RSVP helpers", () => {
     const whatsapp = buildWhatsAppUrl("+62 812-345", "https://example.com/invite/EJ26-X7K92", "Dear Friends");
     expect(whatsapp).toContain("wa.me/62812345");
     expect(whatsapp).toContain("Edward+%26+Jessica");
+  });
+
+  it("builds a multi-event wedding calendar file", () => {
+    const calendar = buildWeddingCalendarIcs(weddingContent, new Date("2026-01-01T00:00:00.000Z"));
+    expect(calendar.match(/BEGIN:VEVENT/g)).toHaveLength(3);
+    expect(calendar).toContain("SUMMARY:Edward & Jessica - Buddhist Holy Matrimony");
+    expect(calendar).toContain("SUMMARY:Edward & Jessica - Chinese Tea Ceremony & Lunch");
+    expect(calendar).toContain("SUMMARY:Edward & Jessica - Dinner Reception");
+    expect(calendar).toContain("DTSTART;TZID=Asia/Jakarta:20261212T093000");
   });
 });

@@ -4,6 +4,7 @@ import type {
   MealPreference,
   RsvpSubmission,
   SelfRegistrationSubmission,
+  WeddingContent,
   WeddingEvent
 } from "@/lib/types";
 
@@ -116,6 +117,59 @@ export function buildGoogleCalendarUrl(event: WeddingEvent, coupleName: string, 
   url.searchParams.set("location", `${event.venueName}, ${event.venueAddress}`);
   url.searchParams.set("details", event.note?.en || "Edward & Jessica wedding celebration.");
   return url.toString();
+}
+
+function escapeIcsText(value: string) {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+}
+
+function foldIcsLine(line: string) {
+  const maxLength = 74;
+  if (line.length <= maxLength) return line;
+  const chunks = [];
+  let remaining = line;
+  while (remaining.length > maxLength) {
+    chunks.push(remaining.slice(0, maxLength));
+    remaining = ` ${remaining.slice(maxLength)}`;
+  }
+  chunks.push(remaining);
+  return chunks.join("\r\n");
+}
+
+export function buildWeddingCalendarIcs(content: WeddingContent, now = new Date()) {
+  const timestamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Edward Jessica Wedding//Wedding Calendar//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    `X-WR-CALNAME:${escapeIcsText(content.coupleName)}`,
+    `X-WR-TIMEZONE:${content.timezone}`
+  ];
+
+  for (const event of content.events) {
+    const dates = eventDateTime(event);
+    const details = event.note?.en || "Edward & Jessica wedding celebration.";
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${event.key}-${event.date}@edward-jessica-wedding`,
+      `DTSTAMP:${timestamp}`,
+      `DTSTART;TZID=${content.timezone}:${dates.start}`,
+      `DTEND;TZID=${content.timezone}:${dates.end}`,
+      `SUMMARY:${escapeIcsText(`${content.coupleName} - ${event.title.en}`)}`,
+      `LOCATION:${escapeIcsText(`${event.venueName}, ${event.venueAddress}`)}`,
+      `DESCRIPTION:${escapeIcsText(details)}`,
+      "END:VEVENT"
+    );
+  }
+
+  lines.push("END:VCALENDAR");
+  return `${lines.map(foldIcsLine).join("\r\n")}\r\n`;
 }
 
 export function buildWhatsAppUrl(phone: string | undefined, inviteUrl: string, greeting: string) {
