@@ -3,18 +3,17 @@
 import {
   CalendarDays,
   CheckCircle2,
-  MapPin,
   MessageSquareText,
-  Music2,
   Send,
   Utensils
 } from "lucide-react";
 import { FormEvent, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { SaveDateSection } from "@/components/site/save-date-section";
+import { StorySection } from "@/components/site/story-section";
 import { copy, text } from "@/lib/i18n";
 import {
-  buildGoogleCalendarUrl,
   isRsvpClosed,
   mealPreferences,
   normalizeInviteCode
@@ -70,56 +69,44 @@ export function InvitePage({
             <p className="hero-kicker" style={{ marginTop: 34 }}>
               {currentInvitation.greeting}
             </p>
-            <h1 className="hero-title serif">{content.coupleName.replace("&", "+")}</h1>
+            <h1 className="hero-title serif">{content.coupleName}</h1>
             <p className="hero-meta">
               {text(content.openingText, language)}
             </p>
-            <div className="hero-actions">
-              <button className="button button-primary" type="button" onClick={begin}>
-                <Send size={18} />
-                {c.letsBegin}
+            <div className="hero-actions hero-actions-centered">
+              <button className="button button-primary hero-open-button" type="button" onClick={begin}>
+                OPEN INVITATION
               </button>
-              <a className="button button-secondary" href={content.venue.mapsUrl} target="_blank" rel="noreferrer">
-                <MapPin size={18} />
-                {c.openMap}
-              </a>
-              {content.musicUrl ? (
-                <button className="button button-secondary" type="button" onClick={() => audioRef.current?.play()}>
-                  <Music2 size={18} />
-                  {c.music}
-                </button>
-              ) : null}
             </div>
           </div>
         </div>
       </section>
 
       <section className="section" id="invite-details">
-        <div className="container grid-2">
-          <div>
+        <div className="container">
+          <div className="centered-section-copy">
             <p className="eyebrow">{c.details}</p>
             <h2 className="title serif">{text(content.introText, language)}</h2>
-          </div>
-          <div className="invite-panel">
-            <p className="eyebrow">{c.privateNote}</p>
-            <p style={{ marginTop: 10 }}>
-              {currentInvitation.privateNotes
-                ? text(currentInvitation.privateNotes, language)
-                : text(content.notes[0], language)}
-            </p>
-            <p className="muted" style={{ marginTop: 16 }}>
-              {c.noPlusOne}
-            </p>
+            <figure className="invitation-section-photo">
+              <Image
+                src="https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/invitation-section-20260507-196.jpg"
+                alt=""
+                fill
+                sizes="(max-width: 860px) calc(100vw - 48px), 980px"
+              />
+            </figure>
           </div>
         </div>
       </section>
+
+      <SaveDateSection content={content} labels={c} />
 
       <section className="section">
         <div className="container">
           <div className="section-heading">
             <div>
               <p className="eyebrow">{c.schedule}</p>
-              <h2 className="title serif">Your Invitation</h2>
+              <h2 className="title serif">{c.scheduleTitle}</h2>
             </div>
           </div>
           <div style={{ display: "grid", gap: 14 }}>
@@ -135,9 +122,8 @@ export function InvitePage({
                 </div>
                 <a
                   className="button button-muted"
-                  href={buildGoogleCalendarUrl(eventItem, content.coupleName, content.timezone)}
-                  target="_blank"
-                  rel="noreferrer"
+                  href="/api/calendar"
+                  download="edward-jessica-wedding.ics"
                 >
                   <CalendarDays size={17} />
                   {c.addToCalendar}
@@ -147,6 +133,28 @@ export function InvitePage({
           </div>
         </div>
       </section>
+
+      <StorySection language={language} />
+
+      {content.gallery.length ? (
+        <section className="section">
+          <div className="container">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">{c.gallery}</p>
+                <h2 className="title serif">White, Champagne, Gold</h2>
+              </div>
+            </div>
+            <div className="gallery-grid">
+              {content.gallery.map((asset) => (
+                <figure className="gallery-item" key={asset.id}>
+                  <Image src={asset.url} alt={text(asset.alt, language)} fill sizes="(max-width: 860px) 100vw, 33vw" />
+                </figure>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="section" id="rsvp">
         <div className="container">
@@ -188,25 +196,6 @@ export function InvitePage({
               />
             </div>
           ) : null}
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="container grid-2">
-          <div>
-            <p className="eyebrow">{c.venue}</p>
-            <h2 className="title serif">{content.venue.name}</h2>
-          </div>
-          <div className="panel">
-            <p>{content.venue.address}</p>
-            <p className="muted" style={{ marginTop: 14 }}>
-              {c.parking}: {text(content.venue.parking, language)}
-            </p>
-            <a className="button button-muted" href={content.venue.mapsUrl} target="_blank" rel="noreferrer" style={{ marginTop: 22 }}>
-              <MapPin size={17} />
-              {c.openMap}
-            </a>
-          </div>
         </div>
       </section>
     </main>

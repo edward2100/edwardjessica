@@ -5,9 +5,10 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { copy, text } from "@/lib/i18n";
-import { buildGoogleCalendarUrl, normalizeInviteCode } from "@/lib/rsvp";
+import { normalizeInviteCode } from "@/lib/rsvp";
 import type { Language, WeddingContent } from "@/lib/types";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { StorySection } from "@/components/site/story-section";
 
 export function HomePage({ content }: { content: WeddingContent }) {
   const [language, setLanguage] = useState<Language>(content.defaultLanguage);
@@ -16,10 +17,6 @@ export function HomePage({ content }: { content: WeddingContent }) {
   const router = useRouter();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const c = copy[language];
-  const firstEventCalendar = useMemo(
-    () => buildGoogleCalendarUrl(content.events[0], content.coupleName, content.timezone),
-    [content]
-  );
 
   function begin() {
     setOpened(true);
@@ -44,7 +41,7 @@ export function HomePage({ content }: { content: WeddingContent }) {
             <p className="hero-kicker" style={{ marginTop: 34 }}>
               {c.weddingOf}
             </p>
-            <h1 className="hero-title serif">{content.coupleName.replace("&", "+")}</h1>
+            <h1 className="hero-title serif">{content.coupleName}</h1>
             <p className="hero-meta">
               Saturday, 12 December 2026 · Grand City Hall Medan
             </p>
@@ -53,7 +50,7 @@ export function HomePage({ content }: { content: WeddingContent }) {
                 <ChevronDown size={18} />
                 {c.letsBegin}
               </button>
-              <a className="button button-secondary" href={firstEventCalendar} target="_blank" rel="noreferrer">
+              <a className="button button-secondary" href="/api/calendar" download="edward-jessica-wedding.ics">
                 <CalendarDays size={18} />
                 {c.addToCalendar}
               </a>
@@ -126,9 +123,8 @@ export function HomePage({ content }: { content: WeddingContent }) {
                 </div>
                 <a
                   className="button button-muted"
-                  href={buildGoogleCalendarUrl(eventItem, content.coupleName, content.timezone)}
-                  target="_blank"
-                  rel="noreferrer"
+                  href="/api/calendar"
+                  download="edward-jessica-wedding.ics"
                 >
                   <CalendarDays size={17} />
                   {c.addToCalendar}
@@ -139,21 +135,7 @@ export function HomePage({ content }: { content: WeddingContent }) {
         </div>
       </section>
 
-      <section className="section">
-        <div className="container grid-2">
-          <div>
-            <p className="eyebrow">{c.story}</p>
-            <h2 className="title serif">{content.groomName} + {content.brideName}</h2>
-          </div>
-          <div className="panel">
-            <p>{text(content.loveStory, language)}</p>
-            <p className="muted" style={{ marginTop: 18 }}>{text(content.proposalStory, language)}</p>
-            <p className="muted" style={{ marginTop: 18 }}>
-              {c.parents}: {content.parents.groom.join(" / ")} and {content.parents.bride.join(" / ")}.
-            </p>
-          </div>
-        </div>
-      </section>
+      <StorySection language={language} />
 
       <section className="section">
         <div className="container">
