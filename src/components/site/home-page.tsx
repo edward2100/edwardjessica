@@ -148,7 +148,13 @@ export function HomePage({ content }: { content: WeddingContent }) {
           <div className="gallery-grid">
             {content.gallery.map((asset) => (
               <figure className="gallery-item" key={asset.id}>
-                <Image src={asset.url} alt={text(asset.alt, language)} fill sizes="(max-width: 860px) 100vw, 33vw" />
+                <Image
+                  src={asset.url}
+                  alt={text(asset.alt, language)}
+                  fill
+                  sizes="(max-width: 860px) 100vw, 33vw"
+                  unoptimized
+                />
               </figure>
             ))}
           </div>
