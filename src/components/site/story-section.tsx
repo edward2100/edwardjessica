@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { text } from "@/lib/i18n";
 import type { Language, LocalizedString } from "@/lib/types";
+import { weddingContent } from "@/lib/wedding-content";
 
 type StorySpeaker = "him" | "her";
 
@@ -50,13 +51,19 @@ const storyLabels: Record<StorySpeaker, LocalizedString> = {
   her: { en: "J", id: "J" }
 };
 
-export function StorySection({ language }: { language: Language }) {
+export function StorySection({
+  imageUrl = weddingContent.storyImageUrl,
+  language
+}: {
+  imageUrl?: string;
+  language: Language;
+}) {
   return (
     <section className="section">
       <div className="container story-shell">
         <figure className="story-photo">
           <Image
-            src="https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/story-20260507-206.jpg"
+            src={imageUrl}
             alt="Edward and Jessica in a green mountain landscape"
             fill
             sizes="(max-width: 860px) 100vw, 1120px"
