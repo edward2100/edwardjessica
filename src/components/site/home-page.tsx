@@ -135,7 +135,7 @@ export function HomePage({ content }: { content: WeddingContent }) {
         </div>
       </section>
 
-      <StorySection language={language} />
+      <StorySection imageUrl={content.storyImageUrl} language={language} />
 
       <section className="section">
         <div className="container">
