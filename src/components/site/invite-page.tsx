@@ -89,7 +89,7 @@ export function InvitePage({
             <h2 className="title serif">{text(content.introText, language)}</h2>
             <figure className="invitation-section-photo">
               <Image
-                src="https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/invitation-section-20260507-196.jpg"
+                src={content.invitationImageUrl}
                 alt=""
                 fill
                 sizes="(max-width: 860px) calc(100vw - 48px), 980px"
@@ -134,7 +134,7 @@ export function InvitePage({
         </div>
       </section>
 
-      <StorySection language={language} />
+      <StorySection imageUrl={content.storyImageUrl} language={language} />
 
       {content.gallery.length ? (
         <section className="section">
