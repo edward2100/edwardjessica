@@ -53,6 +53,27 @@ function previewStore() {
   return globalStore.__ejPreviewStore;
 }
 
+function normalizeWeddingContent(content: Partial<WeddingContent>): WeddingContent {
+  return {
+    ...weddingContent,
+    ...content,
+    parents: {
+      ...weddingContent.parents,
+      ...content.parents
+    },
+    venue: {
+      ...weddingContent.venue,
+      ...content.venue
+    },
+    heroImageUrl: content.heroImageUrl || weddingContent.heroImageUrl,
+    invitationImageUrl: content.invitationImageUrl || weddingContent.invitationImageUrl,
+    storyImageUrl: content.storyImageUrl || weddingContent.storyImageUrl,
+    gallery: content.gallery || weddingContent.gallery,
+    events: content.events || weddingContent.events,
+    notes: content.notes || weddingContent.notes
+  };
+}
+
 function cleanOptionalText(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed || undefined;
@@ -150,12 +171,12 @@ export async function getPublishedContent(): Promise<WeddingContent> {
         .maybeSingle()) || {};
     if (data?.content) {
       return {
-        ...(data.content as WeddingContent),
+        ...normalizeWeddingContent(data.content as Partial<WeddingContent>),
         publishedAt: data.published_at || undefined
       };
     }
   }
-  return clone(previewStore().content);
+  return normalizeWeddingContent(clone(previewStore().content));
 }
 
 export async function getDraftContent(): Promise<WeddingContent> {
@@ -169,21 +190,22 @@ export async function getDraftContent(): Promise<WeddingContent> {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle()) || {};
-    if (data?.content) return data.content as WeddingContent;
+    if (data?.content) return normalizeWeddingContent(data.content as Partial<WeddingContent>);
   }
-  return clone(previewStore().draftContent);
+  return normalizeWeddingContent(clone(previewStore().draftContent));
 }
 
 export async function saveDraftContent(content: WeddingContent) {
+  const normalizedContent = normalizeWeddingContent(content);
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
     await supabase?.from("content_versions").insert({
       status: "draft",
-      content,
+      content: normalizedContent,
       updated_at: new Date().toISOString()
     });
   } else {
-    previewStore().draftContent = clone(content);
+    previewStore().draftContent = clone(normalizedContent);
   }
   return getDraftContent();
 }
@@ -218,6 +240,8 @@ function publishedMediaUrls(content: WeddingContent) {
     new Set(
       [
         content.heroImageUrl,
+        content.invitationImageUrl,
+        content.storyImageUrl,
         content.musicUrl,
         ...content.gallery.map((asset) => asset.url)
       ].filter((url): url is string => Boolean(url))
@@ -871,10 +895,17 @@ export async function addMediaAsset(asset: MediaAsset) {
 export async function removeMediaAssetFromDraft(kind: MediaAsset["kind"], url: string) {
   const content = await getDraftContent();
   const fallbackHero = content.gallery.find((asset) => asset.url !== url)?.url || weddingContent.heroImageUrl;
+  const fallbackInvitation =
+    content.gallery.find((asset) => asset.url !== url)?.url || weddingContent.invitationImageUrl;
+  const fallbackStory = content.gallery.find((asset) => asset.url !== url)?.url || weddingContent.storyImageUrl;
   const shouldResetHero = content.heroImageUrl === url;
+  const shouldResetInvitation = content.invitationImageUrl === url;
+  const shouldResetStory = content.storyImageUrl === url;
   const updatedContent: WeddingContent = {
     ...content,
     heroImageUrl: shouldResetHero ? fallbackHero : content.heroImageUrl,
+    invitationImageUrl: shouldResetInvitation ? fallbackInvitation : content.invitationImageUrl,
+    storyImageUrl: shouldResetStory ? fallbackStory : content.storyImageUrl,
     musicUrl: kind === "music" && content.musicUrl === url ? undefined : content.musicUrl,
     gallery:
       kind === "gallery"
@@ -891,14 +922,20 @@ export async function removeMediaAssetFromDraft(kind: MediaAsset["kind"], url: s
   return updatedContent;
 }
 
-export async function setDraftHeroImage(url: string) {
+export async function setDraftImageSlot(slot: "hero" | "invitation" | "story", url: string) {
   const content = await getDraftContent();
   const updatedContent: WeddingContent = {
     ...content,
-    heroImageUrl: url
+    heroImageUrl: slot === "hero" ? url : content.heroImageUrl,
+    invitationImageUrl: slot === "invitation" ? url : content.invitationImageUrl,
+    storyImageUrl: slot === "story" ? url : content.storyImageUrl
   };
   await saveDraftContent(updatedContent);
   return updatedContent;
+}
+
+export async function setDraftHeroImage(url: string) {
+  return setDraftImageSlot("hero", url);
 }
 
 function applyMediaToContent(content: WeddingContent, asset: MediaAsset): WeddingContent {
