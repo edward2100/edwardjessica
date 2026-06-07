@@ -5,7 +5,7 @@ import {
   addMediaAsset,
   getDraftContent,
   removeMediaAssetFromDraft,
-  setDraftHeroImage
+  setDraftImageSlot
 } from "@/lib/data-store";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase";
@@ -112,10 +112,17 @@ export async function PUT(request: Request) {
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { action, url } = (await request.json()) as { action?: string; url?: string };
+    const { action, slot, url } = (await request.json()) as {
+      action?: string;
+      slot?: "hero" | "invitation" | "story";
+      url?: string;
+    };
     if (!url) return NextResponse.json({ error: "Media URL is required." }, { status: 400 });
-    if (action !== "setHero") return NextResponse.json({ error: "Unsupported media action." }, { status: 400 });
-    return NextResponse.json({ content: await setDraftHeroImage(url) });
+    if (action === "setHero") return NextResponse.json({ content: await setDraftImageSlot("hero", url) });
+    if (action !== "setImageSlot" || !slot) {
+      return NextResponse.json({ error: "Unsupported media action." }, { status: 400 });
+    }
+    return NextResponse.json({ content: await setDraftImageSlot(slot, url) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to update media." },
