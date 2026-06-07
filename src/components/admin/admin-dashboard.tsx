@@ -37,6 +37,7 @@ import type {
 } from "@/lib/types";
 
 type Tab = "dashboard" | "guests" | "rsvp" | "content" | "media" | "analytics" | "export";
+type ImageSlot = "hero" | "invitation" | "story";
 
 const tabs: { id: Tab; label: string; icon: ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -52,6 +53,12 @@ const eventLabels: Record<EventKey, string> = {
   holy_matrimony: "Holy Matrimony",
   tea_lunch: "Tea & Lunch",
   dinner: "Dinner"
+};
+
+const imageSlotLabels: Record<ImageSlot, string> = {
+  hero: "Hero",
+  invitation: "Invitation Intro",
+  story: "Our Story"
 };
 
 export function AdminDashboard({
@@ -76,7 +83,7 @@ export function AdminDashboard({
       <aside className="admin-sidebar">
         <p className="eyebrow">Wedding Admin</p>
         <h1 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>
-          Edward + Jessica
+          Edward & Jessica
         </h1>
         <p className="muted" style={{ marginTop: 8 }}>{admin.displayName}</p>
         <nav className="admin-nav" aria-label="Admin navigation">
@@ -851,20 +858,20 @@ function MediaView({
     }
   }
 
-  async function setHero(url: string) {
+  async function setImageSlot(slot: ImageSlot, url: string) {
     setNotice("");
     const response = await fetch("/api/admin/media", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "setHero", url })
+      body: JSON.stringify({ action: "setImageSlot", slot, url })
     });
     const json = (await response.json()) as { content?: WeddingContent; error?: string };
     if (!response.ok || !json.content) {
-      setNotice(json.error || "Unable to set hero photo.");
+      setNotice(json.error || `Unable to set ${imageSlotLabels[slot].toLowerCase()} photo.`);
       return;
     }
     onContent(json.content);
-    setNotice("Hero photo updated in draft.");
+    setNotice(`${imageSlotLabels[slot]} photo updated in draft. Publish changes before sharing.`);
   }
 
   async function remove(kind: MediaAsset["kind"], url: string) {
@@ -950,13 +957,24 @@ function MediaView({
       </div>
 
       <div className="admin-panel">
-        <p className="eyebrow">Hero Photo</p>
-        <div className="media-preview-row" style={{ marginTop: 12 }}>
-          <Image src={content.heroImageUrl} alt="" width={160} height={120} />
-          <div>
-            <p>{content.heroImageUrl}</p>
-            <p className="muted" style={{ marginTop: 8 }}>This is the first image guests see.</p>
-          </div>
+        <p className="eyebrow">Site Photo Slots</p>
+        <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>Photos guests see</h3>
+        <div className="media-list" style={{ marginTop: 12 }}>
+          <SitePhotoSlot
+            description="Full-screen opening image."
+            label={imageSlotLabels.hero}
+            url={content.heroImageUrl}
+          />
+          <SitePhotoSlot
+            description="Image shown below the opening invitation message."
+            label={imageSlotLabels.invitation}
+            url={content.invitationImageUrl}
+          />
+          <SitePhotoSlot
+            description="Image shown above the story section."
+            label={imageSlotLabels.story}
+            url={content.storyImageUrl}
+          />
         </div>
       </div>
 
@@ -975,9 +993,17 @@ function MediaView({
                 <p>{asset.alt.en}</p>
                 <p className="muted" style={{ marginTop: 6 }}>{asset.url}</p>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                  <button className="button button-muted" type="button" onClick={() => setHero(asset.url)}>
+                  <button className="button button-muted" type="button" onClick={() => setImageSlot("hero", asset.url)}>
                     <ImagePlus size={15} />
                     Set Hero
+                  </button>
+                  <button className="button button-muted" type="button" onClick={() => setImageSlot("invitation", asset.url)}>
+                    <ImagePlus size={15} />
+                    Set Invitation
+                  </button>
+                  <button className="button button-muted" type="button" onClick={() => setImageSlot("story", asset.url)}>
+                    <ImagePlus size={15} />
+                    Set Story
                   </button>
                   <button className="button button-muted" type="button" onClick={() => remove("gallery", asset.url)}>
                     <Trash2 size={15} />
@@ -1007,6 +1033,27 @@ function MediaView({
             No music uploaded yet. The site starts music only after the guest taps the opening button.
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function SitePhotoSlot({
+  description,
+  label,
+  url
+}: {
+  description: string;
+  label: string;
+  url: string;
+}) {
+  return (
+    <div className="media-preview-row">
+      <Image src={url} alt="" width={160} height={120} />
+      <div>
+        <p className="eyebrow">{label}</p>
+        <p style={{ marginTop: 6 }}>{url}</p>
+        <p className="muted" style={{ marginTop: 8 }}>{description}</p>
       </div>
     </div>
   );
