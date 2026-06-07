@@ -53,6 +53,8 @@ export interface WeddingContent {
   dressCode: LocalizedString;
   musicUrl?: string;
   heroImageUrl: string;
+  invitationImageUrl: string;
+  storyImageUrl: string;
   gallery: MediaAsset[];
   events: WeddingEvent[];
   publishedAt?: string;
