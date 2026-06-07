@@ -988,7 +988,7 @@ function MediaView({
         <div className="media-list">
           {content.gallery.map((asset) => (
             <div className="media-preview-row" key={asset.id}>
-              <Image src={asset.url} alt={asset.alt.en} width={160} height={120} />
+              <Image src={asset.url} alt={asset.alt.en} width={160} height={120} unoptimized />
               <div>
                 <p>{asset.alt.en}</p>
                 <p className="muted" style={{ marginTop: 6 }}>{asset.url}</p>
@@ -1049,7 +1049,7 @@ function SitePhotoSlot({
 }) {
   return (
     <div className="media-preview-row">
-      <Image src={url} alt="" width={160} height={120} />
+      <Image src={url} alt="" width={160} height={120} unoptimized />
       <div>
         <p className="eyebrow">{label}</p>
         <p style={{ marginTop: 6 }}>{url}</p>
