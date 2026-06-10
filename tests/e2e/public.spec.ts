@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("public landing loads and opens personalized invite", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("h1")).toHaveText(/Edward\s*\+\s*Jessica/i);
+  await expect(page.locator("h1")).toHaveText(/Edward\s*&\s*Jessica/i);
   await page.getByLabel(/Enter invitation code/i).fill("EJ26-HARDWIN");
   await page.getByRole("button", { name: /Open Invitation/i }).click();
   await expect(page).toHaveURL(/\/invite\/EJ26-HARDWIN/);
@@ -11,6 +11,7 @@ test("public landing loads and opens personalized invite", async ({ page }) => {
 
 test("admin preview login reaches dashboard", async ({ page }) => {
   await page.goto("/admin/login");
+  await page.getByLabel("Email").fill("edward@example.com");
   await page.getByLabel("Password").fill("preview");
   await page.getByRole("button", { name: /Sign in/i }).click();
   await expect(page).toHaveURL(/\/admin$/);
@@ -19,6 +20,7 @@ test("admin preview login reaches dashboard", async ({ page }) => {
 
 test("admin can create, edit, and delete a guest group", async ({ page }) => {
   await page.goto("/admin/login");
+  await page.getByLabel("Email").fill("edward@example.com");
   await page.getByLabel("Password").fill("preview");
   await page.getByRole("button", { name: /Sign in/i }).click();
   await expect(page).toHaveURL(/\/admin$/);
@@ -54,7 +56,7 @@ test("admin can create, edit, and delete a guest group", async ({ page }) => {
 
 test("generic invite code self-registers immediately", async ({ page }) => {
   await page.goto("/invite/JESSmarriED");
-  await expect(page.getByRole("heading", { name: /Edward\s*\+\s*Jessica/i })).toBeVisible();
+  await expect(page.locator("h1")).toHaveText(/Edward\s*&\s*Jessica/i);
   await expect(page.getByText("Buddhist Holy Matrimony")).toBeVisible();
   await expect(page.getByText("Chinese Tea Ceremony & Lunch")).toBeVisible();
   await expect(page.getByText("Dinner Reception")).toBeVisible();

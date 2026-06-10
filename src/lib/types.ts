@@ -14,6 +14,20 @@ export type AdminRole = "super_admin";
 
 export type InvitationSource = "admin" | "generic";
 
+export type PublicInviteFlow = "generic" | "family" | "overseas";
+
+export type DiscoverMedanSectionId = "localFood" | "supper" | "cafe";
+
+export type TravelAccommodationOption =
+  | "specific_roommates"
+  | "assign_roommates"
+  | "own_accommodation";
+
+export type AdminWhatsAppMessageType =
+  | "invitation"
+  | "rsvp_confirmation"
+  | "travel_plans";
+
 export interface WeddingEvent {
   key: EventKey;
   title: LocalizedString;
@@ -24,6 +38,32 @@ export interface WeddingEvent {
   venueName: string;
   venueAddress: string;
   note?: LocalizedString;
+}
+
+export interface DiscoverMedanGuideItem {
+  id: string;
+  name: LocalizedString;
+  note: LocalizedString;
+  imageUrl?: string;
+}
+
+export interface DiscoverMedanGuideSection {
+  id: DiscoverMedanSectionId;
+  eyebrow: LocalizedString;
+  title: LocalizedString;
+  intro: LocalizedString;
+  items: DiscoverMedanGuideItem[];
+}
+
+export interface DiscoverMedanContent {
+  heroKicker: LocalizedString;
+  heroTitle: LocalizedString;
+  heroSubtitle: LocalizedString;
+  heroButton: LocalizedString;
+  introEyebrow: LocalizedString;
+  introTitle: LocalizedString;
+  introParagraphs: Record<Language, string[]>;
+  sections: DiscoverMedanGuideSection[];
 }
 
 export interface WeddingContent {
@@ -55,9 +95,57 @@ export interface WeddingContent {
   heroImageUrl: string;
   invitationImageUrl: string;
   storyImageUrl: string;
+  travelHeroImageUrl: string;
+  travelAirportImageUrl: string;
+  travelAccommodationImageUrl: string;
+  travelFormImageUrl: string;
+  discoverHeroImageUrl: string;
+  discoverIntroImageUrl: string;
+  discoverFoodImageUrl: string;
+  discoverSupperImageUrl: string;
+  discoverCafeImageUrl: string;
+  imageCrops: Partial<Record<ImageCropSlot, ImageCropSettings>>;
+  discoverMedan: DiscoverMedanContent;
+  publicInviteTypes: PublicInviteType[];
   gallery: MediaAsset[];
   events: WeddingEvent[];
   publishedAt?: string;
+}
+
+export type ImageCropSlot =
+  | "hero"
+  | "invitation"
+  | "story"
+  | "travelHero"
+  | "travelAirport"
+  | "travelAccommodation"
+  | "travelForm"
+  | "discoverHero"
+  | "discoverIntro"
+  | "discoverFood"
+  | "discoverSupper"
+  | "discoverCafe";
+
+export interface ImageFocalPoint {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface ImageCropSettings {
+  desktop: ImageFocalPoint;
+  mobile: ImageFocalPoint;
+}
+
+export interface PublicInviteType {
+  id: string;
+  label: LocalizedString;
+  code: string;
+  flow: PublicInviteFlow;
+  maxGuests: number;
+  requireGuestNames: boolean;
+  isEnabled: boolean;
+  description?: LocalizedString;
 }
 
 export interface MediaAsset {
@@ -76,8 +164,10 @@ export interface InvitationGroup {
   groupName: string;
   phone?: string;
   email?: string;
+  maxGuests: number;
   side: GuestSide;
   source?: InvitationSource;
+  flow: PublicInviteFlow;
   privateNotes?: LocalizedString;
   eligibleEvents: EventKey[];
   openedAt?: string;
@@ -108,18 +198,51 @@ export interface RsvpSubmission {
   status: Exclude<RsvpStatus, "pending">;
   eventAttendance: Partial<Record<EventKey, boolean>>;
   mealPreferences: Record<string, MealPreference>;
+  additionalGuests?: AdminGuestInput[];
   message?: string;
 }
 
 export interface SelfRegistrationSubmission {
   accessCode: string;
+  email: string;
   name: string;
   phone: string;
   guestCount: number;
+  guestNames?: string[];
   mealPreference: Exclude<MealPreference, "unset">;
   status: Exclude<RsvpStatus, "pending">;
   eventAttendance: Partial<Record<EventKey, boolean>>;
   message?: string;
+}
+
+export interface TravelPlanSubmission {
+  code: string;
+  arrivalAt: string;
+  departureAt: string;
+  accommodationOption: TravelAccommodationOption;
+  preferredRoommates?: string;
+}
+
+export interface TravelPlan {
+  id: string;
+  invitationGroupId: string;
+  arrivalAt: string;
+  departureAt: string;
+  accommodationOption: TravelAccommodationOption;
+  preferredRoommates?: string;
+  submittedAt: string;
+  updatedAt: string;
+}
+
+export interface AdminMessageLog {
+  id: string;
+  invitationGroupId: string;
+  channel: "whatsapp";
+  messageType: AdminWhatsAppMessageType;
+  recipient?: string;
+  messagePreview?: string;
+  sentAt: string;
+  sentBy?: string;
 }
 
 export interface AdminRsvpUpdate {
@@ -139,7 +262,9 @@ export interface AdminInvitationUpsert {
   greeting: string;
   phone?: string;
   email?: string;
+  maxGuests?: number;
   side: GuestSide;
+  flow: PublicInviteFlow;
   privateNotes?: Partial<LocalizedString>;
   eligibleEvents: EventKey[];
   guests: AdminGuestInput[];
@@ -178,6 +303,7 @@ export interface AdminSnapshot {
   invitations: InvitationGroup[];
   content: WeddingContent;
   history: RsvpHistoryItem[];
+  messageLogs: AdminMessageLog[];
 }
 
 export interface GuestCsvRow {
@@ -186,7 +312,9 @@ export interface GuestCsvRow {
   name: string;
   phone?: string;
   email?: string;
+  maxGuests?: number;
   side: GuestSide;
+  flow: PublicInviteFlow;
   events: EventKey[];
   privateNotesEn?: string;
   privateNotesId?: string;

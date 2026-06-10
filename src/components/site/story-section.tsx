@@ -1,6 +1,8 @@
 import Image from "next/image";
+import type { CSSProperties } from "react";
 import { text } from "@/lib/i18n";
-import type { Language, LocalizedString } from "@/lib/types";
+import { imageCropPosition, imageCropScale } from "@/lib/image-crop";
+import type { ImageCropSettings, Language, LocalizedString } from "@/lib/types";
 import { weddingContent } from "@/lib/wedding-content";
 
 type StorySpeaker = "him" | "her";
@@ -26,7 +28,7 @@ const storyMessages: Array<{
   {
     speaker: "him",
     body: {
-      en: "I wasn't staring — i was manifesting. I just didn't know how to actually talk to her yet. When she finally talked to me, I was overjoyed — every small interaction meant a lot to me. I looked forward to every single day of school.",
+      en: "I wasn't staring — I was manifesting. I just didn't know how to actually talk to her yet. When she finally talked to me, I was overjoyed — every small interaction meant a lot to me. I looked forward to every single day of school.",
       id: "Aku bukan menatap — aku sedang manifesting. Aku hanya belum tahu cara benar-benar berbicara dengannya. Saat akhirnya dia bicara denganku, aku sangat bahagia — setiap interaksi kecil berarti banyak untukku. Aku menantikan setiap hari sekolah."
     }
   },
@@ -52,12 +54,23 @@ const storyLabels: Record<StorySpeaker, LocalizedString> = {
 };
 
 export function StorySection({
+  imageCrop,
   imageUrl = weddingContent.storyImageUrl,
   language
 }: {
+  imageCrop?: ImageCropSettings;
   imageUrl?: string;
   language: Language;
 }) {
+  const imageStyle = {
+    "--image-position-desktop": imageCropPosition(imageCrop, "desktop"),
+    "--image-position-mobile": imageCropPosition(imageCrop, "mobile"),
+    "--image-origin-desktop": imageCropPosition(imageCrop, "desktop"),
+    "--image-origin-mobile": imageCropPosition(imageCrop, "mobile"),
+    "--image-scale-desktop": String(imageCropScale(imageCrop, "desktop")),
+    "--image-scale-mobile": String(imageCropScale(imageCrop, "mobile")),
+  } as CSSProperties;
+
   return (
     <section className="section">
       <div className="container story-shell">
@@ -67,6 +80,7 @@ export function StorySection({
             alt="Edward and Jessica in a green mountain landscape"
             fill
             sizes="(max-width: 860px) 100vw, 1120px"
+            style={imageStyle}
           />
         </figure>
 

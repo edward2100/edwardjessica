@@ -14,7 +14,8 @@
     "qa:static": "npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e",
     "qa:content": "node work/check-content-state.mjs",
     "qa:supabase": "node work/check-supabase.mjs",
-    "qa:live": "node work/check-supabase.mjs && node work/live-qa.mjs && node work/admin-ui-live-qa.mjs && node work/media-live-qa.mjs && node work/media-ui-live-qa.mjs && node work/publish-media-live-qa.mjs && node work/check-content-state.mjs"
+    "qa:live": "node work/check-supabase.mjs && node work/live-qa.mjs && node work/admin-ui-live-qa.mjs && node work/media-live-qa.mjs && node work/media-ui-live-qa.mjs && node work/publish-media-live-qa.mjs && node work/check-content-state.mjs",
+    "media:compress": "node work/compress-supabase-images.mjs"
   },
   "keywords": [
     "wedding",
@@ -36,6 +37,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "sharp": "^0.34.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {

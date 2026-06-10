@@ -17,6 +17,20 @@ export function createSupabaseServiceClient() {
   );
 }
 
+export function createSupabaseAuthClient() {
+  const publishableKey = getSupabasePublishableKey();
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !publishableKey) {
+    return null;
+  }
+
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, publishableKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
 export async function createSupabaseCookieClient() {
   const publishableKey = getSupabasePublishableKey();
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !publishableKey) {

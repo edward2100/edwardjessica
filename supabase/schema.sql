@@ -57,8 +57,10 @@ create table if not exists invitation_groups (
   group_name text not null,
   phone text,
   email text,
+  max_guests integer not null default 1 check (max_guests between 1 and 10),
   side guest_side not null default 'joint',
   source text not null default 'admin' check (source in ('admin', 'generic')),
+  flow text not null default 'generic' check (flow in ('generic', 'overseas', 'family')),
   private_notes jsonb,
   eligible_events text[] not null default array['dinner'],
   opened_at timestamptz,
@@ -69,6 +71,14 @@ create table if not exists invitation_groups (
 alter table invitation_groups
 add column if not exists source text not null default 'admin'
 check (source in ('admin', 'generic'));
+
+alter table invitation_groups
+add column if not exists flow text not null default 'generic'
+check (flow in ('generic', 'overseas', 'family'));
+
+alter table invitation_groups
+add column if not exists max_guests integer not null default 1
+check (max_guests between 1 and 10);
 
 create table if not exists guests (
   id uuid primary key default gen_random_uuid(),
@@ -105,6 +115,17 @@ create table if not exists invite_open_events (
   user_agent text
 );
 
+create table if not exists travel_plans (
+  id uuid primary key default gen_random_uuid(),
+  invitation_group_id uuid not null unique references invitation_groups(id) on delete cascade,
+  arrival_at timestamptz not null,
+  departure_at timestamptz not null,
+  accommodation_option text not null check (accommodation_option in ('specific_roommates', 'assign_roommates', 'own_accommodation')),
+  preferred_roommates text,
+  submitted_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table admin_profiles enable row level security;
 alter table site_settings enable row level security;
 alter table content_versions enable row level security;
@@ -114,6 +135,7 @@ alter table guests enable row level security;
 alter table rsvps enable row level security;
 alter table rsvp_history enable row level security;
 alter table invite_open_events enable row level security;
+alter table travel_plans enable row level security;
 
 create or replace function is_admin()
 returns boolean
@@ -189,6 +211,12 @@ drop policy if exists "admin read opens" on invite_open_events;
 create policy "admin read opens"
 on invite_open_events for select
 using (is_admin());
+
+drop policy if exists "admin manage travel plans" on travel_plans;
+create policy "admin manage travel plans"
+on travel_plans for all
+using (is_admin())
+with check (is_admin());
 
 create or replace function public.get_invitation_by_code(invite_code text)
 returns jsonb

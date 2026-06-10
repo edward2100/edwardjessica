@@ -47,6 +47,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SITE_URL=https://your-domain.com
 NEXT_PUBLIC_ENABLE_DEMO_MODE=false
+RESEND_API_KEY=
+RSVP_EMAIL_FROM="Edward & Jessica RSVP <rsvp@edwardjessica.com>"
+RSVP_EMAIL_REPLY_TO=rsvp@edwardjessica.com
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` must stay server-only. Do not expose it in browser code or public client-side variables.

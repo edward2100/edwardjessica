@@ -1,4 +1,5 @@
 import type { WeddingContent } from "@/lib/types";
+import { createDefaultDiscoverMedanContent } from "@/lib/discover-medan-content";
 
 export const EVENT_DATE = "2026-12-12";
 export const RSVP_DEADLINE = "2026-09-01T16:59:59.000Z";
@@ -14,27 +15,27 @@ export const weddingContent: WeddingContent = {
   defaultLanguage: "en",
   openingText: {
     en: "Together with our families, we invite you to celebrate our wedding.",
-    id: "Bersama keluarga kami, kami mengundang Anda untuk merayakan hari pernikahan kami."
+    id: "Bersama keluarga kami, kami mengundang Anda untuk merayakan hari pernikahan kami.",
   },
   introText: {
     en: "With joyful hearts, we are beginning a new chapter and would be honored to share the day with you.",
-    id: "Dengan hati penuh sukacita, kami memulai babak baru dan berbahagia dapat berbagi hari ini bersama Anda."
+    id: "Dengan hati penuh sukacita, kami memulai babak baru dan berbahagia dapat berbagi hari ini bersama Anda.",
   },
   loveStory: {
     en: "We first noticed each other in junior high in 2011, became close friends through little conversations, and got together in 2014.",
-    id: "Kami pertama kali saling memperhatikan saat SMP pada tahun 2011, menjadi sahabat dekat melalui obrolan-obrolan kecil, lalu mulai bersama pada tahun 2014."
+    id: "Kami pertama kali saling memperhatikan saat SMP pada tahun 2011, menjadi sahabat dekat melalui obrolan-obrolan kecil, lalu mulai bersama pada tahun 2014.",
   },
   proposalStory: {
     en: "What began as shy glances and years of friendship now brings us to our wedding day.",
-    id: "Kisah yang berawal dari tatapan malu-malu dan persahabatan panjang kini membawa kami ke hari pernikahan."
+    id: "Kisah yang berawal dari tatapan malu-malu dan persahabatan panjang kini membawa kami ke hari pernikahan.",
   },
   coupleBio: {
     en: "Edward is calm and thoughtful; Jessica is warm and full of joy.",
-    id: "Edward tenang dan penuh perhatian; Jessica hangat dan penuh sukacita."
+    id: "Edward tenang dan penuh perhatian; Jessica hangat dan penuh sukacita.",
   },
   parents: {
     groom: ["Brilian Moktar", "Janice Jong"],
-    bride: ["Hardwin Salim", "Masria Ang"]
+    bride: ["Hardwin Salim", "Masria Ang"],
   },
   venue: {
     name: "Grand City Hall Medan",
@@ -43,24 +44,90 @@ export const weddingContent: WeddingContent = {
     mapsUrl: "https://maps.app.goo.gl/hPL5x2kPToUaAK946",
     parking: {
       en: "Complimentary parking is available at the hotel basement.",
-      id: "Parkir gratis tersedia di basement hotel."
-    }
+      id: "Parkir gratis tersedia di basement hotel.",
+    },
   },
   notes: [
     {
       en: "Please wear socks for the holy matrimony.",
-      id: "Mohon menggunakan kaus kaki untuk acara pemberkatan pernikahan."
-    }
+      id: "Mohon menggunakan kaus kaki untuk acara pemberkatan pernikahan.",
+    },
   ],
   dressCode: {
     en: "Formal attire. Socks are required for holy matrimony.",
-    id: "Busana formal. Kaus kaki diwajibkan untuk pemberkatan pernikahan."
+    id: "Busana formal. Kaus kaki diwajibkan untuk pemberkatan pernikahan.",
   },
   heroImageUrl: "/assets/wedding-hero-placeholder.png",
   invitationImageUrl:
-    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/invitation-section-20260507-196.jpg",
+    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/optimized/invitation-section-20260507-196-1800-c45e87d2f4.webp",
   storyImageUrl:
-    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/story-20260507-206.jpg",
+    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/optimized/story-20260507-206-1800-82592eee6f.webp",
+  travelHeroImageUrl:
+    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/optimized/invitation-section-20260507-196-1800-c45e87d2f4.webp",
+  travelAirportImageUrl: "/assets/kualanamu-airport-station.jpg",
+  travelAccommodationImageUrl: "/assets/grand-city-hall-medan.jpg",
+  travelFormImageUrl:
+    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/optimized/story-20260507-206-1800-82592eee6f.webp",
+  discoverHeroImageUrl:
+    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/optimized/invitation-section-20260507-196-1800-c45e87d2f4.webp",
+  discoverIntroImageUrl: "/assets/grand-city-hall-medan.jpg",
+  discoverFoodImageUrl:
+    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/optimized/story-20260507-206-1800-82592eee6f.webp",
+  discoverSupperImageUrl: "/assets/kualanamu-airport-station.jpg",
+  discoverCafeImageUrl:
+    "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/optimized/invitation-section-20260507-196-1800-c45e87d2f4.webp",
+  imageCrops: {},
+  discoverMedan: createDefaultDiscoverMedanContent(),
+  publicInviteTypes: [
+    {
+      id: "generic",
+      label: {
+        en: "Friends & Family",
+        id: "Keluarga & Sahabat",
+      },
+      code: "JESSMARRIED",
+      flow: "generic",
+      maxGuests: 2,
+      requireGuestNames: false,
+      isEnabled: true,
+      description: {
+        en: "General RSVP link for friends and family. Allows up to two guests and asks for a plus-one name when needed.",
+        id: "Tautan RSVP umum untuk keluarga dan sahabat. Maksimal dua tamu dan meminta nama pendamping bila diperlukan.",
+      },
+    },
+    {
+      id: "overseas",
+      label: {
+        en: "Overseas Guests",
+        id: "Tamu dari Luar Kota/Negeri",
+      },
+      code: "EJOVERSEAS",
+      flow: "overseas",
+      maxGuests: 1,
+      requireGuestNames: false,
+      isEnabled: true,
+      description: {
+        en: "Travel-focused RSVP link with accommodation and Medan guide placeholders.",
+        id: "Tautan RSVP untuk perjalanan dengan bagian akomodasi dan panduan Medan.",
+      },
+    },
+    {
+      id: "family",
+      label: {
+        en: "Family",
+        id: "Keluarga",
+      },
+      code: "EJFAMILY",
+      flow: "family",
+      maxGuests: 6,
+      requireGuestNames: true,
+      isEnabled: true,
+      description: {
+        en: "Family RSVP link. Allows up to six guests and requires every guest name.",
+        id: "Tautan RSVP keluarga. Maksimal enam tamu dan wajib mengisi nama setiap tamu.",
+      },
+    },
+  ],
   gallery: [
     {
       id: "gallery-1",
@@ -68,10 +135,10 @@ export const weddingContent: WeddingContent = {
       url: "/assets/wedding-hero-placeholder.png",
       alt: {
         en: "Elegant wedding hall placeholder",
-        id: "Placeholder aula pernikahan elegan"
+        id: "Placeholder aula pernikahan elegan",
       },
       sortOrder: 1,
-      isPublished: true
+      isPublished: true,
     },
     {
       id: "gallery-2",
@@ -79,10 +146,10 @@ export const weddingContent: WeddingContent = {
       url: "/assets/wedding-hero-placeholder.png",
       alt: {
         en: "Champagne and white floral wedding setup",
-        id: "Dekorasi pernikahan bernuansa champagne dan putih"
+        id: "Dekorasi pernikahan bernuansa champagne dan putih",
       },
       sortOrder: 2,
-      isPublished: true
+      isPublished: true,
     },
     {
       id: "gallery-3",
@@ -90,53 +157,58 @@ export const weddingContent: WeddingContent = {
       url: "/assets/wedding-hero-placeholder.png",
       alt: {
         en: "Warm candlelit wedding reception placeholder",
-        id: "Placeholder resepsi pernikahan hangat dengan lilin"
+        id: "Placeholder resepsi pernikahan hangat dengan lilin",
       },
       sortOrder: 3,
-      isPublished: true
-    }
+      isPublished: true,
+    },
   ],
   events: [
     {
       key: "holy_matrimony",
       title: {
-        en: "Buddhist Holy Matrimony",
-        id: "Pemberkatan Pernikahan Buddha"
+        en: "Buddhist Wedding Ceremony",
+        id: "Upacara Pernikahan Buddha",
       },
-      shortTitle: { en: "Holy Matrimony", id: "Pemberkatan" },
+      shortTitle: {
+        en: "Buddhist Holy Matrimony",
+        id: "Pemberkatan Pernikahan Buddha",
+      },
       date: EVENT_DATE,
       startTime: "09:30",
-      venueName: "Grand City Hall Medan",
-      venueAddress:
-        "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia",
+      venueName: "Vihara BLIA",
+      venueAddress: "Vihara BLIA",
       note: {
-        en: "Socks are required for this ceremony.",
-        id: "Kaus kaki diwajibkan untuk acara ini."
-      }
+        en: "Socks are required at the venue.",
+        id: "Kaus kaki diwajibkan di lokasi acara.",
+      },
     },
     {
       key: "tea_lunch",
-      title: { en: "Chinese Tea Ceremony & Lunch", id: "Tea Pai dan Makan Siang" },
-      shortTitle: { en: "Tea & Lunch", id: "Tea Pai" },
+      title: {
+        en: "Tea Ceremony & Lunch Buffet",
+        id: "Tea Pai & Lunch Buffet",
+      },
+      shortTitle: { en: "Lunch Buffet", id: "Lunch Buffet" },
       date: EVENT_DATE,
       startTime: "13:30",
-      venueName: "Grand City Hall Medan",
+      venueName: "D’Heritage - Grand City Hall Medan",
       venueAddress:
-        "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia"
+        "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia",
     },
     {
       key: "dinner",
       title: { en: "Dinner Reception", id: "Resepsi Makan Malam" },
-      shortTitle: { en: "Dinner", id: "Resepsi" },
+      shortTitle: { en: "Dinner Reception", id: "Resepsi Makan Malam" },
       date: EVENT_DATE,
       startTime: "18:30",
-      venueName: "Grand City Hall Medan",
+      venueName: "Mahogany Grand Ballroom - Grand City Hall Medan",
       venueAddress:
         "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia",
       note: {
         en: "Guest arrival starts at 6:30 PM; dinner begins at 7:00 PM.",
-        id: "Kedatangan tamu mulai pukul 18.30; makan malam dimulai pukul 19.00."
-      }
-    }
-  ]
+        id: "Kedatangan tamu mulai pukul 18.30; makan malam dimulai pukul 19.00.",
+      },
+    },
+  ],
 };

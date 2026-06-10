@@ -1,44 +1,183 @@
 "use client";
 
-import { CalendarDays, CheckCircle2, Send, Users, Utensils } from "lucide-react";
+import {
+  CalendarDays,
+  Send,
+  Users,
+  Utensils,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Route } from "next";
+import type { CSSProperties } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  RegisterBackgroundMusic,
+  useBackgroundMusic,
+} from "@/components/site/background-music";
+import { EmailOtpGate } from "@/components/site/email-otp-gate";
+import { FloatingRsvpButton } from "@/components/site/floating-rsvp-button";
+import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { PhoneCountryInput } from "@/components/site/phone-country-input";
 import { SaveDateSection } from "@/components/site/save-date-section";
 import { StorySection } from "@/components/site/story-section";
+import {
+  discoverMedanHref,
+  invitationHref,
+  travelAccommodationHref,
+} from "@/lib/guest-navigation";
+import { imageCropStyleVars } from "@/lib/image-crop";
 import { copy, text } from "@/lib/i18n";
-import type { EventKey, InvitationGroup, Language, MealPreference, WeddingContent } from "@/lib/types";
+import { isRsvpClosed } from "@/lib/rsvp";
+import type {
+  EventKey,
+  InvitationGroup,
+  Language,
+  MealPreference,
+  PublicInviteType,
+  WeddingContent,
+} from "@/lib/types";
 
 export function SelfRegisterInvitePage({
   content,
-  accessCode
+  inviteType,
 }: {
   content: WeddingContent;
-  accessCode: string;
+  inviteType: PublicInviteType;
 }) {
   const [language, setLanguage] = useState<Language>(content.defaultLanguage);
-  const [savedInvitation, setSavedInvitation] = useState<InvitationGroup | null>(null);
+  const [hasOpenedInvitation, setHasOpenedInvitation] = useState(false);
+  const [savedInvitation, setSavedInvitation] =
+    useState<InvitationGroup | null>(null);
   const [showRsvpForm, setShowRsvpForm] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState("");
+  const [isResolvingInvite, setIsResolvingInvite] = useState(false);
+  const music = useBackgroundMusic();
+  const router = useRouter();
   const detailsRef = useRef<HTMLElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
   const c = copy[language];
+  const activeCode = savedInvitation?.code;
+  const currentInvitationHref = invitationHref(activeCode, inviteType.flow);
+  const currentTravelHref = travelAccommodationHref(activeCode, inviteType.flow);
+  const currentDiscoverHref = discoverMedanHref(activeCode, inviteType.flow);
 
   function begin() {
-    detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setHasOpenedInvitation(true);
+    music.play();
+    window.requestAnimationFrame(() => {
+      detailsRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   }
 
   function revealForm() {
     setShowRsvpForm(true);
+    void resolveExistingSession();
     window.setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 40);
   }
 
+  async function resolveExistingSession() {
+    setIsResolvingInvite(true);
+    const response = await fetch(
+      `/api/guest-auth/resolve-invite?flow=${encodeURIComponent(inviteType.flow)}`,
+    );
+    const json = (await response.json()) as {
+      verified?: boolean;
+      invitation?: InvitationGroup;
+    };
+    setIsResolvingInvite(false);
+    if (response.ok && json.invitation?.code) {
+      setSavedInvitation(json.invitation);
+      if (inviteType.flow === "overseas" || inviteType.flow === "family") {
+        window.localStorage.setItem(
+          `edward-jessica-${inviteType.flow}-invite-code`,
+          json.invitation.code,
+        );
+      }
+      router.push(`/invite/${encodeURIComponent(json.invitation.code)}` as Route);
+    }
+  }
+
+  async function resolveVerifiedEmail(email: string) {
+    setIsResolvingInvite(true);
+    const response = await fetch(
+      `/api/guest-auth/resolve-invite?flow=${encodeURIComponent(inviteType.flow)}`,
+    );
+    const json = (await response.json()) as {
+      invitation?: InvitationGroup;
+    };
+    setIsResolvingInvite(false);
+    if (response.ok && json.invitation?.code) {
+      setSavedInvitation(json.invitation);
+      if (inviteType.flow === "overseas" || inviteType.flow === "family") {
+        window.localStorage.setItem(
+          `edward-jessica-${inviteType.flow}-invite-code`,
+          json.invitation.code,
+        );
+      }
+      router.push(`/invite/${encodeURIComponent(json.invitation.code)}` as Route);
+      return;
+    }
+    setVerifiedEmail(email);
+  }
+
+  function openSavedInvitation(invitation: InvitationGroup) {
+    setSavedInvitation(invitation);
+    if (inviteType.flow === "overseas" || inviteType.flow === "family") {
+      window.localStorage.setItem(
+        `edward-jessica-${inviteType.flow}-invite-code`,
+        invitation.code,
+      );
+    }
+    router.push(`/invite/${encodeURIComponent(invitation.code)}` as Route);
+  }
+
+  useEffect(() => {
+    function openRsvpFromHash() {
+      if (window.location.hash !== "#rsvp") return;
+      setHasOpenedInvitation(true);
+      setShowRsvpForm(true);
+      window.setTimeout(() => {
+        formRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 80);
+    }
+
+    openRsvpFromHash();
+    window.addEventListener("hashchange", openRsvpFromHash);
+    return () => window.removeEventListener("hashchange", openRsvpFromHash);
+  }, []);
+
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${hasOpenedInvitation ? "" : "hero-locked"}`}>
+      <GuestMenu
+        discoverHref={currentDiscoverHref}
+        flow={inviteType.flow}
+        invitationHref={currentInvitationHref}
+        language={language}
+        travelHref={currentTravelHref}
+      />
+      {hasOpenedInvitation ? <FloatingRsvpButton /> : null}
+      <RegisterBackgroundMusic src={content.musicUrl} />
       <section className="hero">
-        <Image className="hero-image" src={content.heroImageUrl} alt="" fill priority sizes="100vw" />
+        <Image
+          className="hero-image"
+          src={content.heroImageUrl}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          style={imageCropStyleVars(content, "hero") as CSSProperties}
+        />
         <div className="hero-content">
           <div>
             <LanguageToggle language={language} onChange={setLanguage} />
@@ -48,8 +187,13 @@ export function SelfRegisterInvitePage({
             <h1 className="hero-title serif">{content.coupleName}</h1>
             <p className="hero-meta">{text(content.openingText, language)}</p>
             <div className="hero-actions hero-actions-centered">
-              <button className="button button-primary hero-open-button" type="button" onClick={begin}>
-                OPEN INVITATION
+              <button
+                className="button button-primary hero-open-button"
+                type="button"
+                onClick={begin}
+                onPointerDown={music.play}
+              >
+                {c.openInvitation}
               </button>
             </div>
           </div>
@@ -67,6 +211,9 @@ export function SelfRegisterInvitePage({
                 alt=""
                 fill
                 sizes="(max-width: 860px) calc(100vw - 48px), 980px"
+                style={
+                  imageCropStyleVars(content, "invitation") as CSSProperties
+                }
               />
             </figure>
           </div>
@@ -93,7 +240,9 @@ export function SelfRegisterInvitePage({
                       {text(eventItem.title, language)}
                     </h3>
                     <p className="muted">{eventItem.venueName}</p>
-                    {eventItem.note ? <p className="muted">{text(eventItem.note, language)}</p> : null}
+                    {eventItem.note ? (
+                      <p className="muted">{text(eventItem.note, language)}</p>
+                    ) : null}
                   </div>
                   <a
                     className="button button-muted"
@@ -101,7 +250,7 @@ export function SelfRegisterInvitePage({
                     download="edward-jessica-wedding.ics"
                   >
                     <CalendarDays size={17} />
-                    {c.addToCalendar}
+                    {c.addFullSchedule}
                   </a>
                 </article>
               ))}
@@ -110,7 +259,11 @@ export function SelfRegisterInvitePage({
         </section>
       ) : null}
 
-      <StorySection imageUrl={content.storyImageUrl} language={language} />
+      <StorySection
+        imageCrop={content.imageCrops.story}
+        imageUrl={content.storyImageUrl}
+        language={language}
+      />
 
       {content.gallery.length ? (
         <section className="section">
@@ -118,7 +271,7 @@ export function SelfRegisterInvitePage({
             <div className="section-heading">
               <div>
                 <p className="eyebrow">{c.gallery}</p>
-                <h2 className="title serif">White, Champagne, Gold</h2>
+                <h2 className="title serif">{c.galleryTitle}</h2>
               </div>
             </div>
             <div className="gallery-grid">
@@ -142,58 +295,80 @@ export function SelfRegisterInvitePage({
         <div className="container">
           <div className="rsvp-callout">
             <div>
-              <p className="eyebrow">Register RSVP</p>
-              <h2 className="serif" style={{ fontSize: "clamp(2.2rem, 6vw, 5rem)", lineHeight: 0.95 }}>
-                {savedInvitation ? "Your RSVP is saved" : "Ready to RSVP?"}
+              <p className="eyebrow">{c.registerRsvp}</p>
+              <h2
+                className="serif"
+                style={{
+                  fontSize: "clamp(2.2rem, 6vw, 5rem)",
+                  lineHeight: 0.95,
+                }}
+              >
+                {savedInvitation ? c.rsvpSavedTitle : c.readyToRsvp}
               </h2>
               <p className="muted" style={{ marginTop: 14 }}>
                 {savedInvitation
-                  ? "Thank you. Your RSVP has been saved below."
-                  : "Please review the wedding details above before registering your attendance."}
+                  ? c.receivedRsvp
+                  : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
               </p>
             </div>
             {savedInvitation ? null : (
-              <button className="button button-primary rsvp-main-button" type="button" onClick={revealForm}>
+              <button
+                className="button button-primary rsvp-main-button"
+                type="button"
+                onClick={revealForm}
+              >
                 <Users size={18} />
-                Register RSVP
+                {c.registerRsvp}
               </button>
             )}
           </div>
 
           {showRsvpForm || savedInvitation ? (
-            <div ref={formRef} id="self-rsvp-form" className="rsvp-grid" style={{ marginTop: 24 }}>
+            <div
+              ref={formRef}
+              id="self-rsvp-form"
+              className="rsvp-grid"
+              style={{ marginTop: 24 }}
+            >
               <div>
-                <p className="eyebrow">Register RSVP</p>
-                <h2 className="title serif">Tell us who is coming</h2>
+                <p className="eyebrow">{c.registerRsvp}</p>
+                <h2 className="title serif">{c.tellUsWhoIsComing}</h2>
                 <p className="muted" style={{ marginTop: 14 }}>
-                  This creates a guest group instantly from the generic code.
+                  {c.guestCountHint.replace(
+                    "{count}",
+                    String(inviteType.maxGuests),
+                  )}
                 </p>
               </div>
-              {savedInvitation ? (
+              {savedInvitation || isResolvingInvite ? (
                 <div className="invite-panel">
-                  <p className="eyebrow">
-                    <CheckCircle2 size={15} style={{ display: "inline", marginRight: 6 }} />
-                    RSVP saved
-                  </p>
+                  <p className="eyebrow">{c.rsvpSavedTitle}</p>
                   <h3 className="serif" style={{ fontSize: "2rem", marginTop: 10 }}>
-                    Thank you, {savedInvitation.groupName}
+                    {isResolvingInvite
+                      ? c.checkingExistingRsvp
+                      : c.openingPersonalInvite}
                   </h3>
                   <p className="muted" style={{ marginTop: 12 }}>
-                    Your RSVP has been tentatively accepted and counted. Your personal invitation code is{" "}
-                    {savedInvitation.code}.
+                    {savedInvitation
+                      ? c.receivedRsvp
+                      : c.verifyEmailIntro}
                   </p>
-                  <Link className="button button-muted" href={`/invite/${savedInvitation.code}`} style={{ marginTop: 20 }}>
-                    View your invite
-                  </Link>
                 </div>
-              ) : (
-                <SelfRegisterForm
-                  accessCode={accessCode}
-                  events={content.events}
-                  language={language}
-                  onSaved={setSavedInvitation}
-                />
-              )}
+              ) : verifiedEmail ? (
+                  <SelfRegisterForm
+                    content={content}
+                    events={content.events}
+                    inviteType={inviteType}
+                    language={language}
+                    onSaved={openSavedInvitation}
+                  />
+                ) : (
+                  <EmailOtpGate
+                    autoVerifySession={false}
+                    language={language}
+                    onVerified={resolveVerifiedEmail}
+                  />
+                )}
             </div>
           ) : null}
         </div>
@@ -203,51 +378,110 @@ export function SelfRegisterInvitePage({
 }
 
 function SelfRegisterForm({
-  accessCode,
+  content,
   events,
+  inviteType,
   language,
-  onSaved
+  onSaved,
 }: {
-  accessCode: string;
+  content: WeddingContent;
   events: WeddingContent["events"];
+  inviteType: PublicInviteType;
   language: Language;
   onSaved: (invitation: InvitationGroup) => void;
 }) {
+  const c = copy[language];
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [guestCount, setGuestCount] = useState(1);
-  const [mealPreference, setMealPreference] = useState<Exclude<MealPreference, "unset">>("non_vegetarian");
+  const [guestNames, setGuestNames] = useState<string[]>([""]);
+  const [mealPreference, setMealPreference] =
+    useState<Exclude<MealPreference, "unset">>("non_vegetarian");
   const [status, setStatus] = useState<"attending" | "declined">("attending");
-  const [eventAttendance, setEventAttendance] = useState<Partial<Record<EventKey, boolean>>>(
-    Object.fromEntries(events.map((eventItem) => [eventItem.key, true]))
-  );
+  const [eventAttendance, setEventAttendance] = useState<
+    Partial<Record<EventKey, boolean>>
+  >(Object.fromEntries(events.map((eventItem) => [eventItem.key, true])));
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const closed = isRsvpClosed(content.rsvpDeadline);
+  const maxGuests = Math.max(1, inviteType.maxGuests || 1);
+  const isAttending = status === "attending";
+  const needsEveryGuestName =
+    isAttending &&
+    (inviteType.requireGuestNames || inviteType.flow === "family");
+  const needsPlusOneName =
+    isAttending && !needsEveryGuestName && guestCount > 1;
+
+  function setCount(nextCount: number) {
+    const normalizedCount = Math.min(maxGuests, Math.max(1, nextCount || 1));
+    setGuestCount(normalizedCount);
+    setGuestNames((current) =>
+      Array.from(
+        { length: normalizedCount },
+        (_, index) => current[index] || "",
+      ),
+    );
+  }
+
+  function setGuestName(index: number, value: string) {
+    setGuestNames((current) =>
+      Array.from({ length: guestCount }, (_, guestIndex) =>
+        guestIndex === index ? value : current[guestIndex] || "",
+      ),
+    );
+  }
+
+  function resolvedGuestNames() {
+    if (needsEveryGuestName) {
+      return Array.from(
+        { length: guestCount },
+        (_, index) => guestNames[index]?.trim() || "",
+      );
+    }
+    if (needsPlusOneName) return [name.trim(), guestNames[1]?.trim() || ""];
+    return [name.trim()];
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (closed) return;
     setNotice("");
     setLoading(true);
+    const finalGuestNames = resolvedGuestNames();
     const response = await fetch("/api/rsvp/self-register", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        accessCode,
+        accessCode: inviteType.code,
         name,
         phone,
         guestCount,
+        guestNames: finalGuestNames,
         mealPreference,
         status,
         eventAttendance: status === "attending" ? eventAttendance : {},
-        message
-      })
+        message,
+      }),
     });
-    const json = (await response.json()) as { invitation?: InvitationGroup; error?: string };
+    const json = (await response.json()) as {
+      invitation?: InvitationGroup;
+      error?: string;
+    };
     setLoading(false);
     if (!response.ok || !json.invitation) {
-      setNotice(json.error || "Unable to save RSVP.");
+      setNotice(
+        language === "id"
+          ? c.unableToSaveRsvp
+          : json.error || c.unableToSaveRsvp,
+      );
       return;
+    }
+    if (inviteType.flow === "overseas" || inviteType.flow === "family") {
+      window.localStorage.setItem(
+        `edward-jessica-${inviteType.flow}-invite-code`,
+        json.invitation.code,
+      );
     }
     onSaved(json.invitation);
   }
@@ -255,7 +489,9 @@ function SelfRegisterForm({
   return (
     <form className="invite-panel" onSubmit={submit}>
       <div className="form-field">
-        <label htmlFor="self-name">Name</label>
+        <label htmlFor="self-name">
+          {needsEveryGuestName ? c.contactName : c.yourName}
+        </label>
         <input
           className="input"
           id="self-name"
@@ -264,83 +500,146 @@ function SelfRegisterForm({
           required
         />
       </div>
-      <div className="form-field" style={{ marginTop: 14 }}>
-        <label htmlFor="self-phone">Phone / WhatsApp</label>
-        <input
-          className="input"
+      <div style={{ marginTop: 14 }}>
+        <PhoneCountryInput
           id="self-phone"
-          value={phone}
-          onChange={(event) => setPhone(event.target.value)}
+          label={c.phoneWhatsApp}
+          onChange={setPhone}
           required
+          value={phone}
         />
       </div>
-      <div className="grid-2" style={{ marginTop: 14 }}>
-        <label className="form-field" htmlFor="self-count">
-          <span>
-            <Users size={14} style={{ display: "inline", marginRight: 4 }} />
-            Guest count
-          </span>
-          <input
-            className="input"
-            id="self-count"
-            type="number"
-            min={1}
-            max={10}
-            value={guestCount}
-            onChange={(event) => setGuestCount(Number(event.target.value))}
-            required
-          />
-        </label>
-        <label className="form-field" htmlFor="self-meal">
-          <span>
-            <Utensils size={14} style={{ display: "inline", marginRight: 4 }} />
-            Meal choice
-          </span>
-          <select
-            className="select"
-            id="self-meal"
-            value={mealPreference}
-            onChange={(event) => setMealPreference(event.target.value as Exclude<MealPreference, "unset">)}
-          >
-            <option value="non_vegetarian">Non-vegetarian</option>
-            <option value="vegetarian">Vegetarian</option>
-          </select>
-        </label>
-      </div>
       <div className="form-field" style={{ marginTop: 14 }}>
-        <label htmlFor="self-status">RSVP</label>
+        <label htmlFor="self-status">{c.rsvp}</label>
         <select
           className="select"
           id="self-status"
           value={status}
-          onChange={(event) => setStatus(event.target.value as "attending" | "declined")}
+          onChange={(event) =>
+            setStatus(event.target.value as "attending" | "declined")
+          }
         >
-          <option value="attending">Attending</option>
-          <option value="declined">Not attending</option>
+          <option value="attending">{c.attending}</option>
+          <option value="declined">{c.notAttending}</option>
         </select>
       </div>
-      {status === "attending" ? (
-        <div style={{ marginTop: 18 }}>
-          <p className="eyebrow">Events</p>
-          {events.map((eventItem) => (
-            <label className="choice-row" key={eventItem.key}>
-              <span>{text(eventItem.shortTitle, language)}</span>
+
+      {isAttending ? (
+        <>
+          <div className="grid-2" style={{ marginTop: 14 }}>
+            <label className="form-field" htmlFor="self-count">
+              <span>
+                <Users
+                  size={14}
+                  style={{ display: "inline", marginRight: 4 }}
+                />
+                {c.guestCount}
+              </span>
               <input
-                type="checkbox"
-                checked={Boolean(eventAttendance[eventItem.key])}
-                onChange={(event) =>
-                  setEventAttendance((current) => ({
-                    ...current,
-                    [eventItem.key]: event.target.checked
-                  }))
-                }
+                className="input"
+                id="self-count"
+                type="number"
+                min={1}
+                max={maxGuests}
+                value={guestCount}
+                onChange={(event) => setCount(Number(event.target.value))}
+                required
               />
             </label>
-          ))}
-        </div>
+            <label className="form-field" htmlFor="self-meal">
+              <span>
+                <Utensils
+                  size={14}
+                  style={{ display: "inline", marginRight: 4 }}
+                />
+                {c.mealChoice}
+              </span>
+              <select
+                className="select"
+                id="self-meal"
+                value={mealPreference}
+                onChange={(event) =>
+                  setMealPreference(
+                    event.target.value as Exclude<MealPreference, "unset">,
+                  )
+                }
+              >
+                <option value="non_vegetarian">{c.nonVegetarian}</option>
+                <option value="vegetarian">{c.vegetarian}</option>
+              </select>
+            </label>
+          </div>
+          <p className="muted" style={{ marginTop: 8 }}>
+            {c.guestCountHint.replace("{count}", String(maxGuests))}
+          </p>
+
+          {needsEveryGuestName ? (
+            <div style={{ marginTop: 18 }}>
+              <p className="eyebrow">{c.guestNames}</p>
+              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                {Array.from({ length: guestCount }, (_, index) => (
+                  <label
+                    className="form-field"
+                    htmlFor={`self-guest-name-${index}`}
+                    key={index}
+                  >
+                    <span>
+                      {c.guestName.replace("{number}", String(index + 1))}
+                    </span>
+                    <input
+                      className="input"
+                      id={`self-guest-name-${index}`}
+                      value={guestNames[index] || ""}
+                      onChange={(event) =>
+                        setGuestName(index, event.target.value)
+                      }
+                      required
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {needsPlusOneName ? (
+            <label
+              className="form-field"
+              htmlFor="self-plus-one-name"
+              style={{ marginTop: 14 }}
+            >
+              <span>{c.plusOneName}</span>
+              <input
+                className="input"
+                id="self-plus-one-name"
+                value={guestNames[1] || ""}
+                onChange={(event) => setGuestName(1, event.target.value)}
+                required
+              />
+            </label>
+          ) : null}
+
+          <div style={{ marginTop: 18 }}>
+            <p className="eyebrow">{c.events}</p>
+            {events.map((eventItem) => (
+              <label className="choice-row" key={eventItem.key}>
+                <span>{text(eventItem.shortTitle, language)}</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(eventAttendance[eventItem.key])}
+                  onChange={(event) =>
+                    setEventAttendance((current) => ({
+                      ...current,
+                      [eventItem.key]: event.target.checked,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </>
       ) : null}
       <div className="form-field" style={{ marginTop: 14 }}>
-        <label htmlFor="self-message">Message</label>
+        <label htmlFor="self-message">{c.message}</label>
         <textarea
           className="textarea"
           id="self-message"
@@ -348,11 +647,50 @@ function SelfRegisterForm({
           onChange={(event) => setMessage(event.target.value)}
         />
       </div>
-      {notice ? <p className="muted" style={{ marginTop: 12 }}>{notice}</p> : null}
-      <button className="button button-muted" type="submit" disabled={loading} style={{ marginTop: 20 }}>
+      {closed ? (
+        <p className="muted" style={{ marginTop: 14 }}>
+          {c.deadlineClosed}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="muted" style={{ marginTop: 12 }}>
+          {notice}
+        </p>
+      ) : null}
+      <button
+        className="button button-muted"
+        type="submit"
+        disabled={closed || loading}
+        style={{ marginTop: 20 }}
+      >
         <Send size={17} />
-        {loading ? "Saving..." : "Save RSVP"}
+        {loading ? c.saving : c.saveRsvp}
       </button>
     </form>
   );
+}
+
+function formatDeadlineCopy(
+  template: string,
+  deadlineIso: string,
+  timezone: string,
+  language: Language,
+) {
+  return template.replace(
+    "{date}",
+    formatDeadlineDate(deadlineIso, timezone, language),
+  );
+}
+
+function formatDeadlineDate(
+  deadlineIso: string,
+  timezone: string,
+  language: Language,
+) {
+  return new Intl.DateTimeFormat(language === "id" ? "id-ID" : "en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: timezone,
+  }).format(new Date(deadlineIso));
 }

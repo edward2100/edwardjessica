@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { GuestMusicProvider } from "@/components/site/background-music";
 import "@/app/globals.css";
 
 export const metadata: Metadata = {
@@ -22,7 +23,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" data-scroll-behavior="smooth">
-      <body>{children}</body>
+      <body>
+        <GuestMusicProvider>{children}</GuestMusicProvider>
+      </body>
     </html>
   );
 }

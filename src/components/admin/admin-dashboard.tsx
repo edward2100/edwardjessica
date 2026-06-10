@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  CheckCircle2,
   Download,
   Edit3,
   FileText,
@@ -17,27 +18,63 @@ import {
   Trash2,
   Upload,
   Users,
-  X
+  X,
 } from "lucide-react";
 import { ChangeEvent, ElementType, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { buildWhatsAppUrl, eventKeys, mealPreferences } from "@/lib/rsvp";
+import { DiscoverMedanEditor } from "@/components/admin/discover-medan-editor";
+import {
+  defaultImageCrop,
+  imageCropScale,
+  imageCropPosition,
+  normalizeImageCrop,
+} from "@/lib/image-crop";
+import {
+  buildAdminWhatsAppMessage,
+  buildWhatsAppMessageUrl,
+  eventKeys,
+  mealPreferences,
+} from "@/lib/rsvp";
 import type {
   AdminGuestInput,
   AdminInvitationUpsert,
+  AdminMessageLog,
   AdminProfile,
   AdminSnapshot,
+  AdminWhatsAppMessageType,
   EventKey,
   GuestSide,
+  ImageCropSettings,
   InvitationGroup,
   MediaAsset,
+  PublicInviteFlow,
+  PublicInviteType,
   RsvpStatus,
-  WeddingContent
+  WeddingContent,
 } from "@/lib/types";
 
-type Tab = "dashboard" | "guests" | "rsvp" | "content" | "media" | "analytics" | "export";
-type ImageSlot = "hero" | "invitation" | "story";
+type Tab =
+  | "dashboard"
+  | "guests"
+  | "rsvp"
+  | "content"
+  | "media"
+  | "analytics"
+  | "export";
+type ImageSlot =
+  | "hero"
+  | "invitation"
+  | "story"
+  | "travelHero"
+  | "travelAirport"
+  | "travelAccommodation"
+  | "travelForm"
+  | "discoverHero"
+  | "discoverIntro"
+  | "discoverFood"
+  | "discoverSupper"
+  | "discoverCafe";
 
 const tabs: { id: Tab; label: string; icon: ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -46,24 +83,180 @@ const tabs: { id: Tab; label: string; icon: ElementType }[] = [
   { id: "content", label: "Content", icon: FileText },
   { id: "media", label: "Photos & Music", icon: ImagePlus },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
-  { id: "export", label: "Export", icon: Download }
+  { id: "export", label: "Export", icon: Download },
 ];
 
 const eventLabels: Record<EventKey, string> = {
-  holy_matrimony: "Holy Matrimony",
-  tea_lunch: "Tea & Lunch",
-  dinner: "Dinner"
+  holy_matrimony: "Buddhist Holy Matrimony",
+  tea_lunch: "Lunch Buffet",
+  dinner: "Dinner Reception",
 };
 
 const imageSlotLabels: Record<ImageSlot, string> = {
   hero: "Hero",
   invitation: "Invitation Intro",
-  story: "Our Story"
+  story: "Our Story",
+  travelHero: "Travel Hero",
+  travelAirport: "Kualanamu Airport",
+  travelAccommodation: "Accommodation Hotel",
+  travelForm: "Before Travel Form",
+  discoverHero: "Discover Hero",
+  discoverIntro: "Discover Intro",
+  discoverFood: "Local Food",
+  discoverSupper: "Snacks & Supper",
+  discoverCafe: "Cafes",
 };
+
+const publicInviteFlowLabels: Record<PublicInviteFlow, string> = {
+  generic: "General",
+  overseas: "Overseas",
+  family: "Family",
+};
+
+const whatsappMessageLabels: Record<AdminWhatsAppMessageType, string> = {
+  invitation: "Invitation",
+  rsvp_confirmation: "RSVP confirmation",
+  travel_plans: "Travel plans",
+};
+
+const maxBrowserUploadBytes = 35 * 1024 * 1024;
+const maxServerImageBytes = 4 * 1024 * 1024;
+const uploadTimeoutMs = 90_000;
+
+function imageUploadWidth(kind: MediaAsset["kind"], slot?: ImageSlot) {
+  if (kind === "hero") return 2400;
+  if (slot === "hero" || slot === "travelHero" || slot === "discoverHero") {
+    return 2400;
+  }
+  return 1800;
+}
+
+function isHeicImage(file: File) {
+  const name = file.name.toLowerCase();
+  return (
+    file.type === "image/heic" ||
+    file.type === "image/heif" ||
+    name.endsWith(".heic") ||
+    name.endsWith(".heif")
+  );
+}
+
+function webFileName(fileName: string) {
+  const base =
+    fileName
+      .toLowerCase()
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "photo";
+  return `${base}-optimized.webp`;
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality: number,
+) {
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+}
+
+async function loadImageForCompression(file: File) {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new window.Image();
+    image.decoding = "async";
+    image.src = url;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Unable to read this image."));
+    });
+    return image;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function compressImageInBrowser(
+  file: File,
+  kind: MediaAsset["kind"],
+  slot?: ImageSlot,
+) {
+  const image = await loadImageForCompression(file);
+  const maxWidth = imageUploadWidth(kind, slot);
+  const scale = Math.min(1, maxWidth / image.naturalWidth);
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to optimize this image.");
+  context.drawImage(image, 0, 0, width, height);
+
+  const qualities = kind === "hero" || slot === "hero"
+    ? [0.78, 0.68, 0.58]
+    : [0.76, 0.66, 0.56];
+  let bestBlob: Blob | null = null;
+  for (const quality of qualities) {
+    const blob = await canvasToBlob(canvas, "image/webp", quality);
+    if (!blob) continue;
+    bestBlob = blob;
+    if (blob.size <= maxServerImageBytes) break;
+  }
+  if (!bestBlob) throw new Error("Unable to optimize this image.");
+
+  return new File([bestBlob], webFileName(file.name), {
+    type: "image/webp",
+    lastModified: Date.now(),
+  });
+}
+
+async function prepareMediaFileForUpload(
+  file: File,
+  kind: MediaAsset["kind"],
+  slot?: ImageSlot,
+) {
+  if (kind === "music") return file;
+  if (isHeicImage(file)) {
+    throw new Error(
+      "HEIC/HEIF photos are not supported yet. Please export the photo as JPG or PNG and upload again.",
+    );
+  }
+  if (file.size > maxBrowserUploadBytes) {
+    throw new Error("This photo is too large. Please upload an image below 35MB.");
+  }
+  const optimized = await compressImageInBrowser(file, kind, slot);
+  if (optimized.size > maxServerImageBytes) {
+    throw new Error(
+      "This photo is still too large after optimization. Please upload a smaller JPG or PNG.",
+    );
+  }
+  return optimized;
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), uploadTimeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Upload timed out. Please try a smaller image.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function cropForSlot(content: WeddingContent, slot: ImageSlot) {
+  return normalizeImageCrop(content.imageCrops?.[slot]);
+}
 
 export function AdminDashboard({
   admin,
-  snapshot
+  snapshot,
 }: {
   admin: AdminProfile;
   snapshot: AdminSnapshot;
@@ -85,7 +278,9 @@ export function AdminDashboard({
         <h1 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>
           Edward & Jessica
         </h1>
-        <p className="muted" style={{ marginTop: 8 }}>{admin.displayName}</p>
+        <p className="muted" style={{ marginTop: 8 }}>
+          {admin.displayName}
+        </p>
         <nav className="admin-nav" aria-label="Admin navigation">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -109,21 +304,40 @@ export function AdminDashboard({
       </aside>
       <section className="admin-main">
         <AdminHeader tab={activeTab} />
-        {activeTab === "dashboard" ? <DashboardView snapshot={currentSnapshot} /> : null}
-        {activeTab === "guests" ? (
-          <GuestsView snapshot={currentSnapshot} onSnapshot={setCurrentSnapshot} />
+        {activeTab === "dashboard" ? (
+          <DashboardView snapshot={currentSnapshot} />
         ) : null}
-        {activeTab === "rsvp" ? <RsvpView snapshot={currentSnapshot} onSnapshot={setCurrentSnapshot} /> : null}
+        {activeTab === "guests" ? (
+          <GuestsView
+            snapshot={currentSnapshot}
+            onSnapshot={setCurrentSnapshot}
+          />
+        ) : null}
+        {activeTab === "rsvp" ? (
+          <RsvpView
+            snapshot={currentSnapshot}
+            onSnapshot={setCurrentSnapshot}
+          />
+        ) : null}
         {activeTab === "content" ? (
-          <ContentView content={currentSnapshot.content} onContent={(content) => setCurrentSnapshot((s) => ({ ...s, content }))} />
+          <ContentView
+            content={currentSnapshot.content}
+            onContent={(content) =>
+              setCurrentSnapshot((s) => ({ ...s, content }))
+            }
+          />
         ) : null}
         {activeTab === "media" ? (
           <MediaView
             content={currentSnapshot.content}
-            onContent={(content) => setCurrentSnapshot((snapshot) => ({ ...snapshot, content }))}
+            onContent={(content) =>
+              setCurrentSnapshot((snapshot) => ({ ...snapshot, content }))
+            }
           />
         ) : null}
-        {activeTab === "analytics" ? <AnalyticsView snapshot={currentSnapshot} /> : null}
+        {activeTab === "analytics" ? (
+          <AnalyticsView snapshot={currentSnapshot} />
+        ) : null}
         {activeTab === "export" ? <ExportView /> : null}
       </section>
     </main>
@@ -163,7 +377,9 @@ function DashboardView({ snapshot }: { snapshot: AdminSnapshot }) {
               {snapshot.invitations.slice(0, 6).map((invitation) => (
                 <tr key={invitation.id}>
                   <td>{invitation.groupName}</td>
-                  <td><StatusPill status={invitation.rsvp.status} /></td>
+                  <td>
+                    <StatusPill status={invitation.rsvp.status} />
+                  </td>
                   <td>{invitation.eligibleEvents.join(", ")}</td>
                   <td>{formatDateTime(invitation.rsvp.updatedAt)}</td>
                 </tr>
@@ -186,7 +402,7 @@ function MetricGrid({ snapshot }: { snapshot: AdminSnapshot }) {
     ["Declined", stats.declinedInvitations],
     ["Opened", stats.inviteOpens],
     ["Complete", `${stats.rsvpCompletionRate}%`],
-    ["Vegetarian", stats.vegetarianMeals]
+    ["Vegetarian", stats.vegetarianMeals],
   ];
   return (
     <div className="metric-grid">
@@ -202,7 +418,7 @@ function MetricGrid({ snapshot }: { snapshot: AdminSnapshot }) {
 
 function GuestsView({
   snapshot,
-  onSnapshot
+  onSnapshot,
 }: {
   snapshot: AdminSnapshot;
   onSnapshot: (snapshot: AdminSnapshot) => void;
@@ -218,9 +434,12 @@ function GuestsView({
     const response = await fetch("/api/admin/guests", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ csv })
+      body: JSON.stringify({ csv }),
     });
-    const json = (await response.json()) as { snapshot?: AdminSnapshot; error?: string };
+    const json = (await response.json()) as {
+      snapshot?: AdminSnapshot;
+      error?: string;
+    };
     if (!response.ok || !json.snapshot) {
       setNotice(json.error || "Import failed.");
       return;
@@ -239,7 +458,11 @@ function GuestsView({
               <Search size={14} style={{ display: "inline", marginRight: 4 }} />
               Search guests
             </span>
-            <input className="input" value={query} onChange={(event) => setQuery(event.target.value)} />
+            <input
+              className="input"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
           </label>
           <label className="form-field">
             <span>
@@ -250,11 +473,17 @@ function GuestsView({
               className="textarea"
               value={csv}
               onChange={(event) => setCsv(event.target.value)}
-              placeholder="groupName,greeting,name,phone,email,side,events"
+              placeholder="groupName,greeting,name,phone,email,side,flow,events"
             />
           </label>
         </div>
-        <button className="button button-muted" type="button" onClick={importCsv} disabled={!csv.trim()} style={{ marginTop: 14 }}>
+        <button
+          className="button button-muted"
+          type="button"
+          onClick={importCsv}
+          disabled={!csv.trim()}
+          style={{ marginTop: 14 }}
+        >
           Import CSV
         </button>
         <a
@@ -266,11 +495,20 @@ function GuestsView({
           <Download size={17} />
           CSV Template
         </a>
-        <button className="button button-muted" type="button" onClick={() => setEditing("new")} style={{ marginTop: 14, marginLeft: 10 }}>
+        <button
+          className="button button-muted"
+          type="button"
+          onClick={() => setEditing("new")}
+          style={{ marginTop: 14, marginLeft: 10 }}
+        >
           <Plus size={17} />
           New Group
         </button>
-        {notice ? <p className="muted" style={{ marginTop: 10 }}>{notice}</p> : null}
+        {notice ? (
+          <p className="muted" style={{ marginTop: 10 }}>
+            {notice}
+          </p>
+        ) : null}
       </div>
       {editing ? (
         <GuestGroupEditor
@@ -289,7 +527,14 @@ function GuestsView({
           }}
         />
       ) : null}
-      <InvitationTable invitations={filtered} onEdit={setEditing} />
+      <InvitationTable
+        content={snapshot.content}
+        invitations={filtered}
+        messageLogs={snapshot.messageLogs}
+        editableFlow
+        onEdit={setEditing}
+        onSnapshot={onSnapshot}
+      />
     </div>
   );
 }
@@ -298,7 +543,7 @@ function GuestGroupEditor({
   invitation,
   onCancel,
   onSaved,
-  onDeleted
+  onDeleted,
 }: {
   invitation: InvitationGroup | null;
   onCancel: () => void;
@@ -306,13 +551,16 @@ function GuestGroupEditor({
   onDeleted: (snapshot: AdminSnapshot) => void;
 }) {
   const [draft, setDraft] = useState<AdminInvitationUpsert>(
-    invitation ? invitationToDraft(invitation) : emptyInvitationDraft()
+    invitation ? invitationToDraft(invitation) : emptyInvitationDraft(),
   );
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  function setField<K extends keyof AdminInvitationUpsert>(key: K, value: AdminInvitationUpsert[K]) {
+  function setField<K extends keyof AdminInvitationUpsert>(
+    key: K,
+    value: AdminInvitationUpsert[K],
+  ) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
@@ -320,8 +568,8 @@ function GuestGroupEditor({
     setDraft((current) => ({
       ...current,
       guests: current.guests.map((guest, guestIndex) =>
-        guestIndex === index ? { ...guest, ...update } : guest
-      )
+        guestIndex === index ? { ...guest, ...update } : guest,
+      ),
     }));
   }
 
@@ -331,7 +579,7 @@ function GuestGroupEditor({
     const response = await fetch("/api/admin/guests", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(draft)
+      body: JSON.stringify(draft),
     });
     const json = (await response.json()) as {
       invitation?: InvitationGroup;
@@ -349,7 +597,9 @@ function GuestGroupEditor({
 
   async function remove() {
     if (!draft.code) return;
-    const confirmed = window.confirm(`Delete ${draft.groupName}? This also removes their RSVP.`);
+    const confirmed = window.confirm(
+      `Delete ${draft.groupName}? This also removes their RSVP.`,
+    );
     if (!confirmed) return;
 
     setNotice("");
@@ -357,9 +607,12 @@ function GuestGroupEditor({
     const response = await fetch("/api/admin/guests", {
       method: "DELETE",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: draft.code })
+      body: JSON.stringify({ code: draft.code }),
     });
-    const json = (await response.json()) as { snapshot?: AdminSnapshot; error?: string };
+    const json = (await response.json()) as {
+      snapshot?: AdminSnapshot;
+      error?: string;
+    };
     setDeleting(false);
     if (!response.ok || !json.snapshot) {
       setNotice(json.error || "Unable to delete guest group.");
@@ -372,12 +625,18 @@ function GuestGroupEditor({
     <div className="admin-panel">
       <div className="section-heading" style={{ marginBottom: 18 }}>
         <div>
-          <p className="eyebrow">{draft.code ? `Edit ${draft.code}` : "New Guest Group"}</p>
+          <p className="eyebrow">
+            {draft.code ? `Edit ${draft.code}` : "New Guest Group"}
+          </p>
           <h3 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>
             {draft.groupName || "Guest group"}
           </h3>
         </div>
-        <button className="button button-muted" type="button" onClick={onCancel}>
+        <button
+          className="button button-muted"
+          type="button"
+          onClick={onCancel}
+        >
           <X size={15} />
           Cancel
         </button>
@@ -422,12 +681,47 @@ function GuestGroupEditor({
           <select
             className="select"
             value={draft.side}
-            onChange={(event) => setField("side", event.target.value as GuestSide)}
+            onChange={(event) =>
+              setField("side", event.target.value as GuestSide)
+            }
           >
             <option value="joint">Joint</option>
             <option value="groom">Groom</option>
             <option value="bride">Bride</option>
           </select>
+        </label>
+        <label className="form-field">
+          <span>Invitation flow</span>
+          <select
+            className="select"
+            value={draft.flow}
+            onChange={(event) =>
+              setField("flow", event.target.value as PublicInviteFlow)
+            }
+          >
+            <option value="generic">General</option>
+            <option value="overseas">Overseas</option>
+            <option value="family">Family</option>
+          </select>
+        </label>
+        <label className="form-field">
+          <span>Max guests allowed</span>
+          <input
+            className="input"
+            type="number"
+            min={draft.guests.length || 1}
+            max={10}
+            value={draft.maxGuests || draft.guests.length || 1}
+            onChange={(event) =>
+              setField(
+                "maxGuests",
+                Math.min(
+                  10,
+                  Math.max(draft.guests.length || 1, Number(event.target.value) || 1),
+                ),
+              )
+            }
+          />
         </label>
       </div>
 
@@ -445,7 +739,9 @@ function GuestGroupEditor({
                     "eligibleEvents",
                     event.target.checked
                       ? [...draft.eligibleEvents, eventKey]
-                      : draft.eligibleEvents.filter((item) => item !== eventKey)
+                      : draft.eligibleEvents.filter(
+                          (item) => item !== eventKey,
+                        ),
                   )
                 }
               />
@@ -463,7 +759,7 @@ function GuestGroupEditor({
             onChange={(event) =>
               setField("privateNotes", {
                 ...draft.privateNotes,
-                en: event.target.value
+                en: event.target.value,
               })
             }
           />
@@ -476,7 +772,7 @@ function GuestGroupEditor({
             onChange={(event) =>
               setField("privateNotes", {
                 ...draft.privateNotes,
-                id: event.target.value
+                id: event.target.value,
               })
             }
           />
@@ -490,7 +786,17 @@ function GuestGroupEditor({
             className="button button-muted"
             type="button"
             onClick={() =>
-              setField("guests", [...draft.guests, { name: "", mealPreference: "unset" }])
+              setDraft((current) => {
+                const guests = [
+                  ...current.guests,
+                  { name: "", mealPreference: "unset" as const },
+                ];
+                return {
+                  ...current,
+                  guests,
+                  maxGuests: Math.max(current.maxGuests || 1, guests.length),
+                };
+              })
             }
           >
             <Plus size={15} />
@@ -504,14 +810,19 @@ function GuestGroupEditor({
                 className="input"
                 aria-label={`Guest ${index + 1} name`}
                 value={guest.name}
-                onChange={(event) => setGuest(index, { name: event.target.value })}
+                onChange={(event) =>
+                  setGuest(index, { name: event.target.value })
+                }
               />
               <select
                 className="select"
                 aria-label={`Guest ${index + 1} meal preference`}
                 value={guest.mealPreference}
                 onChange={(event) =>
-                  setGuest(index, { mealPreference: event.target.value as AdminGuestInput["mealPreference"] })
+                  setGuest(index, {
+                    mealPreference: event.target
+                      .value as AdminGuestInput["mealPreference"],
+                  })
                 }
                 style={{ maxWidth: 210 }}
               >
@@ -530,10 +841,12 @@ function GuestGroupEditor({
                 type="button"
                 disabled={draft.guests.length === 1}
                 onClick={() =>
-                  setField(
-                    "guests",
-                    draft.guests.filter((_, guestIndex) => guestIndex !== index)
-                  )
+                  setDraft((current) => ({
+                    ...current,
+                    guests: current.guests.filter(
+                      (_, guestIndex) => guestIndex !== index,
+                    ),
+                  }))
                 }
                 aria-label={`Remove guest ${index + 1}`}
               >
@@ -544,14 +857,30 @@ function GuestGroupEditor({
         </div>
       </div>
 
-      {notice ? <p className="muted" style={{ marginTop: 12 }}>{notice}</p> : null}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
-        <button className="button button-muted" type="button" onClick={save} disabled={saving}>
+      {notice ? (
+        <p className="muted" style={{ marginTop: 12 }}>
+          {notice}
+        </p>
+      ) : null}
+      <div
+        style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}
+      >
+        <button
+          className="button button-muted"
+          type="button"
+          onClick={save}
+          disabled={saving}
+        >
           <Save size={15} />
           {saving ? "Saving..." : "Save Group"}
         </button>
         {draft.code ? (
-          <button className="button button-muted" type="button" onClick={remove} disabled={deleting}>
+          <button
+            className="button button-muted"
+            type="button"
+            onClick={remove}
+            disabled={deleting}
+          >
             <Trash2 size={15} />
             {deleting ? "Deleting..." : "Delete Group"}
           </button>
@@ -563,7 +892,7 @@ function GuestGroupEditor({
 
 function RsvpView({
   snapshot,
-  onSnapshot
+  onSnapshot,
 }: {
   snapshot: AdminSnapshot;
   onSnapshot: (snapshot: AdminSnapshot) => void;
@@ -575,24 +904,41 @@ function RsvpView({
       <div className="admin-panel">
         <label className="form-field">
           <span>Filter RSVP</span>
-          <input className="input" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input
+            className="input"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </label>
       </div>
-      <InvitationTable invitations={filtered} showMeals editableStatus onSnapshot={onSnapshot} />
+      <InvitationTable
+        content={snapshot.content}
+        invitations={filtered}
+        messageLogs={snapshot.messageLogs}
+        showMeals
+        editableStatus
+        onSnapshot={onSnapshot}
+      />
     </div>
   );
 }
 
 function InvitationTable({
+  content,
   invitations,
+  messageLogs,
   showMeals = false,
   editableStatus = false,
+  editableFlow = false,
   onEdit,
-  onSnapshot
+  onSnapshot,
 }: {
+  content: WeddingContent;
   invitations: InvitationGroup[];
+  messageLogs: AdminMessageLog[];
   showMeals?: boolean;
   editableStatus?: boolean;
+  editableFlow?: boolean;
   onEdit?: (invitation: InvitationGroup) => void;
   onSnapshot?: (snapshot: AdminSnapshot) => void;
 }) {
@@ -605,9 +951,12 @@ function InvitationTable({
     const response = await fetch("/api/admin/rsvp", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code, status })
+      body: JSON.stringify({ code, status }),
     });
-    const json = (await response.json()) as { snapshot?: AdminSnapshot; error?: string };
+    const json = (await response.json()) as {
+      snapshot?: AdminSnapshot;
+      error?: string;
+    };
     setUpdatingCode("");
     if (!response.ok || !json.snapshot) {
       setNotice(json.error || "Unable to update RSVP.");
@@ -617,14 +966,47 @@ function InvitationTable({
     setNotice("RSVP status updated.");
   }
 
+  async function updateFlow(
+    invitation: InvitationGroup,
+    flow: PublicInviteFlow,
+  ) {
+    setNotice("");
+    setUpdatingCode(invitation.code);
+    const response = await fetch("/api/admin/guests", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...invitationToDraft(invitation),
+        flow,
+      }),
+    });
+    const json = (await response.json()) as {
+      snapshot?: AdminSnapshot;
+      error?: string;
+    };
+    setUpdatingCode("");
+    if (!response.ok || !json.snapshot) {
+      setNotice(json.error || "Unable to update invitation flow.");
+      return;
+    }
+    onSnapshot?.(json.snapshot);
+    setNotice("Invitation flow updated.");
+  }
+
   return (
     <div className="admin-panel" style={{ overflowX: "auto" }}>
-      {notice ? <p className="muted" style={{ marginBottom: 10 }}>{notice}</p> : null}
+      {notice ? (
+        <p className="muted" style={{ marginBottom: 10 }}>
+          {notice}
+        </p>
+      ) : null}
       <table className="data-table">
         <thead>
           <tr>
             <th>Group</th>
             <th>Guests</th>
+            <th>Max</th>
+            <th>Flow</th>
             <th>Status</th>
             <th>Events</th>
             <th>Code</th>
@@ -643,9 +1025,38 @@ function InvitationTable({
                 {invitation.guests.map((guest) => (
                   <p key={guest.id}>
                     {guest.name}
-                    {showMeals ? <span className="muted"> · {guest.mealPreference.replace("_", " ")}</span> : null}
+                    {showMeals ? (
+                      <span className="muted">
+                        {" "}
+                        · {guest.mealPreference.replace("_", " ")}
+                      </span>
+                    ) : null}
                   </p>
                 ))}
+              </td>
+              <td>{invitation.maxGuests}</td>
+              <td>
+                {editableFlow ? (
+                  <select
+                    className="select"
+                    value={invitation.flow}
+                    disabled={updatingCode === invitation.code}
+                    onChange={(event) =>
+                      updateFlow(
+                        invitation,
+                        event.target.value as PublicInviteFlow,
+                      )
+                    }
+                    aria-label={`Invitation flow for ${invitation.groupName}`}
+                    style={{ minWidth: 130 }}
+                  >
+                    <option value="generic">General</option>
+                    <option value="overseas">Overseas</option>
+                    <option value="family">Family</option>
+                  </select>
+                ) : (
+                  publicInviteFlowLabels[invitation.flow]
+                )}
               </td>
               <td>
                 {editableStatus ? (
@@ -653,7 +1064,12 @@ function InvitationTable({
                     className="select"
                     value={invitation.rsvp.status}
                     disabled={updatingCode === invitation.code}
-                    onChange={(event) => updateStatus(invitation.code, event.target.value as RsvpStatus)}
+                    onChange={(event) =>
+                      updateStatus(
+                        invitation.code,
+                        event.target.value as RsvpStatus,
+                      )
+                    }
                     aria-label={`RSVP status for ${invitation.groupName}`}
                     style={{ minWidth: 150 }}
                   >
@@ -665,25 +1081,28 @@ function InvitationTable({
                   <StatusPill status={invitation.rsvp.status} />
                 )}
                 {invitation.source === "generic" ? (
-                  <p className="muted" style={{ marginTop: 6 }}>Self-registered</p>
+                  <p className="muted" style={{ marginTop: 6 }}>
+                    Self-registered
+                  </p>
                 ) : null}
               </td>
               <td>{invitation.eligibleEvents.join(", ")}</td>
               <td>{invitation.code}</td>
               <td>
-                <a
-                  className="button button-muted"
-                  href={buildWhatsAppUrl(invitation.phone, `/invite/${invitation.code}`, invitation.greeting)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Send size={15} />
-                  Send
-                </a>
+                <WhatsAppMessageActions
+                  content={content}
+                  invitation={invitation}
+                  messageLogs={messageLogs}
+                  onSnapshot={onSnapshot}
+                />
               </td>
               {onEdit ? (
                 <td>
-                  <button className="button button-muted" type="button" onClick={() => onEdit(invitation)}>
+                  <button
+                    className="button button-muted"
+                    type="button"
+                    onClick={() => onEdit(invitation)}
+                  >
                     <Edit3 size={15} />
                     Edit
                   </button>
@@ -697,34 +1116,158 @@ function InvitationTable({
   );
 }
 
+function WhatsAppMessageActions({
+  content,
+  invitation,
+  messageLogs,
+  onSnapshot,
+}: {
+  content: WeddingContent;
+  invitation: InvitationGroup;
+  messageLogs: AdminMessageLog[];
+  onSnapshot?: (snapshot: AdminSnapshot) => void;
+}) {
+  const [messageType, setMessageType] =
+    useState<AdminWhatsAppMessageType>("invitation");
+  const [updating, setUpdating] = useState(false);
+  const [notice, setNotice] = useState("");
+  const baseUrl = "https://rsvp.edwardjessica.com";
+  const isTravelMessage = messageType === "travel_plans";
+  const travelMessageAllowed =
+    invitation.flow === "overseas" || invitation.flow === "family";
+  const message = buildAdminWhatsAppMessage({
+    invitation,
+    content,
+    messageType,
+    baseUrl,
+  });
+  const lastSent = messageLogs.find(
+    (log) =>
+      log.invitationGroupId === invitation.id &&
+      log.channel === "whatsapp" &&
+      log.messageType === messageType,
+  );
+
+  async function markSent() {
+    setNotice("");
+    setUpdating(true);
+    const response = await fetch("/api/admin/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        invitationGroupId: invitation.id,
+        messageType,
+        recipient: invitation.phone,
+        messagePreview: message.slice(0, 500),
+      }),
+    });
+    const json = (await response.json()) as {
+      snapshot?: AdminSnapshot;
+      error?: string;
+    };
+    setUpdating(false);
+    if (!response.ok || !json.snapshot) {
+      setNotice(json.error || "Unable to mark message as sent.");
+      return;
+    }
+    onSnapshot?.(json.snapshot);
+    setNotice("Marked sent.");
+  }
+
+  return (
+    <div className="whatsapp-actions">
+      <select
+        className="select"
+        value={messageType}
+        onChange={(event) =>
+          setMessageType(event.target.value as AdminWhatsAppMessageType)
+        }
+        aria-label={`WhatsApp message type for ${invitation.groupName}`}
+      >
+        <option value="invitation">{whatsappMessageLabels.invitation}</option>
+        <option value="rsvp_confirmation">
+          {whatsappMessageLabels.rsvp_confirmation}
+        </option>
+        <option value="travel_plans">
+          {whatsappMessageLabels.travel_plans}
+        </option>
+      </select>
+      <div className="whatsapp-action-row">
+        <a
+          className="button button-muted"
+          href={buildWhatsAppMessageUrl(invitation.phone, message)}
+          target="_blank"
+          rel="noreferrer"
+          aria-disabled={isTravelMessage && !travelMessageAllowed}
+          onClick={(event) => {
+            if (isTravelMessage && !travelMessageAllowed) event.preventDefault();
+          }}
+        >
+          <Send size={15} />
+          Open draft
+        </a>
+        <button
+          className="button button-muted"
+          disabled={updating || (isTravelMessage && !travelMessageAllowed)}
+          type="button"
+          onClick={markSent}
+        >
+          <CheckCircle2 size={15} />
+          Mark sent
+        </button>
+      </div>
+      {isTravelMessage && !travelMessageAllowed ? (
+        <p className="muted">Travel message only applies to overseas/family.</p>
+      ) : null}
+      {lastSent ? (
+        <p className="muted">Last sent: {formatDateTime(lastSent.sentAt)}</p>
+      ) : null}
+      {notice ? <p className="muted">{notice}</p> : null}
+    </div>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   return <span className={`status-pill ${status}`}>{status}</span>;
 }
 
 function ContentView({
   content,
-  onContent
+  onContent,
 }: {
   content: WeddingContent;
   onContent: (content: WeddingContent) => void;
 }) {
   const [draft, setDraft] = useState(content);
   const [notice, setNotice] = useState("");
+  const [uploadingDiscoverItemId, setUploadingDiscoverItemId] = useState("");
 
-  async function save() {
-    setNotice("");
+  async function persistDraftContent(
+    nextDraft: WeddingContent,
+    successNotice?: string,
+  ) {
     const response = await fetch("/api/admin/content", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(draft)
+      body: JSON.stringify(nextDraft),
     });
-    const json = (await response.json()) as { content?: WeddingContent; error?: string };
+    const json = (await response.json()) as {
+      content?: WeddingContent;
+      error?: string;
+    };
     if (!response.ok || !json.content) {
       setNotice(json.error || "Unable to save draft.");
-      return;
+      return null;
     }
     onContent(json.content);
-    setNotice("Draft saved.");
+    setDraft(json.content);
+    if (successNotice) setNotice(successNotice);
+    return json.content;
+  }
+
+  async function save() {
+    setNotice("");
+    await persistDraftContent(draft, "Draft saved.");
   }
 
   async function publish() {
@@ -732,9 +1275,12 @@ function ContentView({
     const response = await fetch("/api/admin/content", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "publish" })
+      body: JSON.stringify({ action: "publish" }),
     });
-    const json = (await response.json()) as { content?: WeddingContent; error?: string };
+    const json = (await response.json()) as {
+      content?: WeddingContent;
+      error?: string;
+    };
     if (!response.ok || !json.content) {
       setNotice(json.error || "Unable to publish.");
       return;
@@ -742,6 +1288,143 @@ function ContentView({
     onContent(json.content);
     setDraft(json.content);
     setNotice("Published.");
+  }
+
+  async function uploadDiscoverItemImage(
+    event: ChangeEvent<HTMLInputElement>,
+    itemId: string,
+  ) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    setNotice("");
+    setUploadingDiscoverItemId(itemId);
+    const savedDraft = await persistDraftContent(draft);
+    if (!savedDraft) {
+      setUploadingDiscoverItemId("");
+      event.target.value = "";
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("kind", "gallery");
+    formData.set("discoverItemId", itemId);
+    formData.set("file", files[0]);
+
+    const response = await fetch("/api/admin/media", {
+      method: "POST",
+      body: formData,
+    });
+    const json = (await response.json()) as {
+      content?: WeddingContent;
+      error?: string;
+    };
+
+    setUploadingDiscoverItemId("");
+    event.target.value = "";
+    if (!response.ok || !json.content) {
+      setNotice(json.error || "Unable to upload Discover item image.");
+      return;
+    }
+    onContent(json.content);
+    setDraft(json.content);
+    setNotice("Discover item image uploaded to draft. Publish before sharing.");
+  }
+
+  function updatePublicInviteType(
+    index: number,
+    update: Partial<PublicInviteType>,
+  ) {
+    setDraft((current) => ({
+      ...current,
+      publicInviteTypes: current.publicInviteTypes.map(
+        (inviteType, inviteTypeIndex) =>
+          inviteTypeIndex === index ? { ...inviteType, ...update } : inviteType,
+      ),
+    }));
+  }
+
+  function updatePublicInviteTypeLabel(
+    index: number,
+    language: "en" | "id",
+    value: string,
+  ) {
+    setDraft((current) => ({
+      ...current,
+      publicInviteTypes: current.publicInviteTypes.map(
+        (inviteType, inviteTypeIndex) =>
+          inviteTypeIndex === index
+            ? {
+                ...inviteType,
+                label: {
+                  ...inviteType.label,
+                  [language]: value,
+                },
+              }
+            : inviteType,
+      ),
+    }));
+  }
+
+  function updatePublicInviteTypeDescription(
+    index: number,
+    language: "en" | "id",
+    value: string,
+  ) {
+    setDraft((current) => ({
+      ...current,
+      publicInviteTypes: current.publicInviteTypes.map(
+        (inviteType, inviteTypeIndex) =>
+          inviteTypeIndex === index
+            ? {
+                ...inviteType,
+                description: {
+                  en: inviteType.description?.en || "",
+                  id: inviteType.description?.id || "",
+                  [language]: value,
+                },
+              }
+            : inviteType,
+      ),
+    }));
+  }
+
+  function addPublicInviteType() {
+    const createdAt = Date.now();
+    setDraft((current) => ({
+      ...current,
+      publicInviteTypes: [
+        ...current.publicInviteTypes,
+        {
+          id: `custom-${createdAt}`,
+          label: {
+            en: "Custom Guests",
+            id: "Tamu Khusus",
+          },
+          code: `EJ${String(current.publicInviteTypes.length + 1).padStart(2, "0")}`,
+          flow: "generic",
+          maxGuests: 2,
+          requireGuestNames: false,
+          isEnabled: true,
+          description: {
+            en: "Custom RSVP link.",
+            id: "Tautan RSVP khusus.",
+          },
+        },
+      ],
+    }));
+  }
+
+  function removePublicInviteType(id: string) {
+    setDraft((current) => ({
+      ...current,
+      publicInviteTypes:
+        current.publicInviteTypes.length <= 1
+          ? current.publicInviteTypes
+          : current.publicInviteTypes.filter(
+              (inviteType) => inviteType.id !== id,
+            ),
+    }));
   }
 
   return (
@@ -755,7 +1438,7 @@ function ContentView({
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
-                openingText: { ...current.openingText, en: event.target.value }
+                openingText: { ...current.openingText, en: event.target.value },
               }))
             }
           />
@@ -768,7 +1451,7 @@ function ContentView({
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
-                openingText: { ...current.openingText, id: event.target.value }
+                openingText: { ...current.openingText, id: event.target.value },
               }))
             }
           />
@@ -782,7 +1465,7 @@ function ContentView({
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
-                rsvpDeadline: new Date(event.target.value).toISOString()
+                rsvpDeadline: new Date(event.target.value).toISOString(),
               }))
             }
           />
@@ -797,14 +1480,216 @@ function ContentView({
                 ...current,
                 venue: {
                   ...current.venue,
-                  parking: { ...current.venue.parking, en: event.target.value }
-                }
+                  parking: { ...current.venue.parking, en: event.target.value },
+                },
               }))
             }
           />
         </label>
       </div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+
+      <div style={{ marginTop: 28 }}>
+        <div className="section-heading" style={{ marginBottom: 12 }}>
+          <div>
+            <p className="eyebrow">Public RSVP Links</p>
+            <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+              Share link types
+            </h3>
+          </div>
+          <button
+            className="button button-muted"
+            type="button"
+            onClick={addPublicInviteType}
+          >
+            <Plus size={15} />
+            Add Type
+          </button>
+        </div>
+        <div style={{ display: "grid", gap: 14 }}>
+          {draft.publicInviteTypes.map((inviteType, index) => (
+            <div className="invite-panel" key={inviteType.id}>
+              <div className="section-heading" style={{ marginBottom: 14 }}>
+                <div>
+                  <p className="eyebrow">
+                    {publicInviteFlowLabels[inviteType.flow]}
+                  </p>
+                  <h4
+                    className="serif"
+                    style={{ fontSize: "1.55rem", marginTop: 6 }}
+                  >
+                    {inviteType.label.en}
+                  </h4>
+                </div>
+                <button
+                  className="button button-muted"
+                  type="button"
+                  onClick={() => removePublicInviteType(inviteType.id)}
+                  disabled={draft.publicInviteTypes.length <= 1}
+                >
+                  <Trash2 size={15} />
+                  Remove
+                </button>
+              </div>
+              <div className="grid-2">
+                <label className="form-field">
+                  <span>Label EN</span>
+                  <input
+                    className="input"
+                    value={inviteType.label.en}
+                    onChange={(event) =>
+                      updatePublicInviteTypeLabel(
+                        index,
+                        "en",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Label ID</span>
+                  <input
+                    className="input"
+                    value={inviteType.label.id}
+                    onChange={(event) =>
+                      updatePublicInviteTypeLabel(
+                        index,
+                        "id",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Invite code</span>
+                  <input
+                    className="input"
+                    value={inviteType.code}
+                    onChange={(event) =>
+                      updatePublicInviteType(index, {
+                        code: event.target.value
+                          .toUpperCase()
+                          .replace(/[^A-Z0-9-]/g, ""),
+                      })
+                    }
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Flow</span>
+                  <select
+                    className="select"
+                    value={inviteType.flow}
+                    onChange={(event) =>
+                      updatePublicInviteType(index, {
+                        flow: event.target.value as PublicInviteFlow,
+                        maxGuests:
+                          event.target.value === "overseas"
+                            ? 1
+                            : inviteType.maxGuests,
+                      })
+                    }
+                  >
+                    <option value="generic">General</option>
+                    <option value="overseas">Overseas</option>
+                    <option value="family">Family</option>
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>Max guests</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={inviteType.flow === "overseas" ? 1 : 10}
+                    value={
+                      inviteType.flow === "overseas" ? 1 : inviteType.maxGuests
+                    }
+                    disabled={inviteType.flow === "overseas"}
+                    onChange={(event) =>
+                      updatePublicInviteType(index, {
+                        maxGuests: Math.min(
+                          10,
+                          Math.max(1, Number(event.target.value) || 1),
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <div className="form-field">
+                  <span>Rules</span>
+                  <label className="choice-row">
+                    <span>Require every guest name</span>
+                    <input
+                      type="checkbox"
+                      checked={inviteType.requireGuestNames}
+                      onChange={(event) =>
+                        updatePublicInviteType(index, {
+                          requireGuestNames: event.target.checked,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="choice-row">
+                    <span>Enabled</span>
+                    <input
+                      type="checkbox"
+                      checked={inviteType.isEnabled}
+                      onChange={(event) =>
+                        updatePublicInviteType(index, {
+                          isEnabled: event.target.checked,
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                <label className="form-field">
+                  <span>Description EN</span>
+                  <textarea
+                    className="textarea"
+                    value={inviteType.description?.en || ""}
+                    onChange={(event) =>
+                      updatePublicInviteTypeDescription(
+                        index,
+                        "en",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Description ID</span>
+                  <textarea
+                    className="textarea"
+                    value={inviteType.description?.id || ""}
+                    onChange={(event) =>
+                      updatePublicInviteTypeDescription(
+                        index,
+                        "id",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </label>
+              </div>
+              <p className="muted" style={{ marginTop: 12 }}>
+                Share as /invite/{inviteType.code}. The /family and /overseas
+                pages are preview aliases for their default flows.
+              </p>
+              <InviteTypeFlowPreview inviteType={inviteType} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <DiscoverMedanEditor
+        content={draft}
+        onChange={setDraft}
+        onUploadItemImage={uploadDiscoverItemImage}
+        uploadingItemId={uploadingDiscoverItemId}
+      />
+
+      <div
+        style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}
+      >
         <button className="button button-muted" type="button" onClick={save}>
           Save Draft
         </button>
@@ -812,14 +1697,18 @@ function ContentView({
           Publish
         </button>
       </div>
-      {notice ? <p className="muted" style={{ marginTop: 10 }}>{notice}</p> : null}
+      {notice ? (
+        <p className="muted" style={{ marginTop: 10 }}>
+          {notice}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 function MediaView({
   content,
-  onContent
+  onContent,
 }: {
   content: WeddingContent;
   onContent: (content: WeddingContent) => void;
@@ -828,50 +1717,60 @@ function MediaView({
   const [uploading, setUploading] = useState("");
   const [publishing, setPublishing] = useState(false);
 
-  async function upload(event: ChangeEvent<HTMLInputElement>, kind: MediaAsset["kind"]) {
+  async function upload(
+    event: ChangeEvent<HTMLInputElement>,
+    kind: MediaAsset["kind"],
+    options: { slot?: ImageSlot } = {},
+  ) {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
 
     setNotice("");
-    setUploading(kind);
+    const uploadKey = options.slot || kind;
+    setUploading(uploadKey);
     let latestContent: WeddingContent | null = null;
-    for (const file of files) {
-      const formData = new FormData();
-      formData.set("file", file);
-      formData.set("kind", kind);
-      const response = await fetch("/api/admin/media", { method: "POST", body: formData });
-      const json = (await response.json()) as { content?: WeddingContent; error?: string };
-      if (!response.ok || !json.content) {
-        setUploading("");
-        setNotice(json.error || "Unable to upload media.");
-        event.target.value = "";
-        return;
+    try {
+      for (const file of options.slot ? files.slice(0, 1) : files) {
+        const preparedFile = await prepareMediaFileForUpload(
+          file,
+          kind,
+          options.slot,
+        );
+        const formData = new FormData();
+        formData.set("file", preparedFile);
+        formData.set("kind", kind);
+        if (options.slot) formData.set("slot", options.slot);
+        const response = await fetchWithTimeout("/api/admin/media", {
+          method: "POST",
+          body: formData,
+        });
+        const json = (await response.json().catch(() => ({}))) as {
+          content?: WeddingContent;
+          error?: string;
+        };
+        if (!response.ok || !json.content) {
+          setNotice(json.error || "Unable to upload media.");
+          return;
+        }
+        latestContent = json.content;
       }
-      latestContent = json.content;
-    }
 
-    setUploading("");
-    event.target.value = "";
-    if (latestContent) {
-      onContent(latestContent);
-      setNotice("Media uploaded to draft. Publish changes before sharing.");
+      if (latestContent) {
+        onContent(latestContent);
+        setNotice(
+          options.slot
+            ? `${imageSlotLabels[options.slot]} photo uploaded to draft. Publish changes before sharing.`
+            : "Media uploaded to draft. Publish changes before sharing.",
+        );
+      }
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Unable to upload media.",
+      );
+    } finally {
+      setUploading("");
+      event.target.value = "";
     }
-  }
-
-  async function setImageSlot(slot: ImageSlot, url: string) {
-    setNotice("");
-    const response = await fetch("/api/admin/media", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "setImageSlot", slot, url })
-    });
-    const json = (await response.json()) as { content?: WeddingContent; error?: string };
-    if (!response.ok || !json.content) {
-      setNotice(json.error || `Unable to set ${imageSlotLabels[slot].toLowerCase()} photo.`);
-      return;
-    }
-    onContent(json.content);
-    setNotice(`${imageSlotLabels[slot]} photo updated in draft. Publish changes before sharing.`);
   }
 
   async function remove(kind: MediaAsset["kind"], url: string) {
@@ -879,9 +1778,12 @@ function MediaView({
     const response = await fetch("/api/admin/media", {
       method: "DELETE",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind, url })
+      body: JSON.stringify({ kind, url }),
     });
-    const json = (await response.json()) as { content?: WeddingContent; error?: string };
+    const json = (await response.json()) as {
+      content?: WeddingContent;
+      error?: string;
+    };
     if (!response.ok || !json.content) {
       setNotice(json.error || "Unable to remove media.");
       return;
@@ -890,15 +1792,41 @@ function MediaView({
     setNotice("Media removed from draft.");
   }
 
+  async function saveCrop(slot: ImageSlot, crop: ImageCropSettings) {
+    setNotice("");
+    const response = await fetch("/api/admin/media", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "setImageCrop",
+        slot,
+        crop: normalizeImageCrop(crop),
+      }),
+    });
+    const json = (await response.json()) as {
+      content?: WeddingContent;
+      error?: string;
+    };
+    if (!response.ok || !json.content) {
+      setNotice(json.error || "Unable to save crop settings.");
+      return;
+    }
+    onContent(json.content);
+    setNotice(`${imageSlotLabels[slot]} crop saved to draft.`);
+  }
+
   async function publish() {
     setNotice("");
     setPublishing(true);
     const response = await fetch("/api/admin/content", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "publish" })
+      body: JSON.stringify({ action: "publish" }),
     });
-    const json = (await response.json()) as { content?: WeddingContent; error?: string };
+    const json = (await response.json()) as {
+      content?: WeddingContent;
+      error?: string;
+    };
     setPublishing(false);
     if (!response.ok || !json.content) {
       setNotice(json.error || "Unable to publish media.");
@@ -912,24 +1840,255 @@ function MediaView({
     <div style={{ display: "grid", gap: 18 }}>
       <div className="admin-panel">
         <p className="eyebrow">Photos & Music</p>
-        <h3 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>Draft media</h3>
+        <h3 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>
+          Draft media
+        </h3>
         <p className="muted" style={{ marginTop: 8 }}>
-          Uploads are saved to Supabase Storage and added to the draft site. Publish changes before sharing.
+          Photo uploads are optimized for web speed, saved to Supabase Storage,
+          and added to the draft site. Publishing makes the current draft
+          photos, music, and content visible to guests.
         </p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}>
+        <div
+          style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}
+        >
+          <button
+            className="button button-muted"
+            type="button"
+            onClick={publish}
+            disabled={publishing}
+          >
+            <Send size={17} />
+            {publishing ? "Publishing..." : "Publish Draft Changes"}
+          </button>
+        </div>
+        {notice ? (
+          <p className="muted" style={{ marginTop: 10 }}>
+            {notice}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="admin-panel">
+        <p className="eyebrow">Site Photo Slots</p>
+        <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+          Photos guests see
+        </h3>
+        <div className="media-list" style={{ marginTop: 12 }}>
+          <SitePhotoSlot
+            crop={cropForSlot(content, "hero")}
+            description="Full-screen opening image."
+            label={imageSlotLabels.hero}
+            onCropChange={(crop) => saveCrop("hero", crop)}
+            onUpload={(event) => upload(event, "hero", { slot: "hero" })}
+            uploadLabel={uploading === "hero" ? "Uploading..." : "Upload Hero"}
+            url={content.heroImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "invitation")}
+            description="Image shown below the opening invitation message."
+            label={imageSlotLabels.invitation}
+            onCropChange={(crop) => saveCrop("invitation", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "invitation" })
+            }
+            uploadLabel={
+              uploading === "invitation"
+                ? "Uploading..."
+                : "Upload Invitation Intro"
+            }
+            url={content.invitationImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "story")}
+            description="Image shown above the story section."
+            label={imageSlotLabels.story}
+            onCropChange={(crop) => saveCrop("story", crop)}
+            onUpload={(event) => upload(event, "gallery", { slot: "story" })}
+            uploadLabel={
+              uploading === "story" ? "Uploading..." : "Upload Story"
+            }
+            url={content.storyImageUrl}
+          />
+        </div>
+      </div>
+
+      <div className="admin-panel">
+        <p className="eyebrow">Travel Page Photos</p>
+        <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+          Travel & Accommodation page
+        </h3>
+        <p className="muted" style={{ marginTop: 8 }}>
+          These images affect the Travel & Accommodation page for overseas and
+          family guests.
+        </p>
+        <div className="media-list" style={{ marginTop: 12 }}>
+          <SitePhotoSlot
+            crop={cropForSlot(content, "travelHero")}
+            description="Full-screen hero image for the Travel & Accommodation page."
+            label={imageSlotLabels.travelHero}
+            onCropChange={(crop) => saveCrop("travelHero", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "travelHero" })
+            }
+            uploadLabel={
+              uploading === "travelHero"
+                ? "Uploading..."
+                : "Upload Travel Hero"
+            }
+            url={content.travelHeroImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "travelAirport")}
+            description="Image shown after the Kualanamu International Airport note."
+            label={imageSlotLabels.travelAirport}
+            onCropChange={(crop) => saveCrop("travelAirport", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "travelAirport" })
+            }
+            uploadLabel={
+              uploading === "travelAirport"
+                ? "Uploading..."
+                : "Upload Airport Image"
+            }
+            url={content.travelAirportImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "travelAccommodation")}
+            description="Image shown after the Grand City Hall Medan accommodation note."
+            label={imageSlotLabels.travelAccommodation}
+            onCropChange={(crop) => saveCrop("travelAccommodation", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "travelAccommodation" })
+            }
+            uploadLabel={
+              uploading === "travelAccommodation"
+                ? "Uploading..."
+                : "Upload Accommodation Image"
+            }
+            url={content.travelAccommodationImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "travelForm")}
+            description="Image shown between Accommodation and the travel plans form."
+            label={imageSlotLabels.travelForm}
+            onCropChange={(crop) => saveCrop("travelForm", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "travelForm" })
+            }
+            uploadLabel={
+              uploading === "travelForm"
+                ? "Uploading..."
+                : "Upload Form Intro Image"
+            }
+            url={content.travelFormImageUrl}
+          />
+        </div>
+      </div>
+
+      <div className="admin-panel">
+        <p className="eyebrow">Discover Medan Photos</p>
+        <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+          Food guide page
+        </h3>
+        <p className="muted" style={{ marginTop: 8 }}>
+          These images affect the Discover Medan guide for overseas and family
+          guests.
+        </p>
+        <div className="media-list" style={{ marginTop: 12 }}>
+          <SitePhotoSlot
+            crop={cropForSlot(content, "discoverHero")}
+            description="Full-screen hero image for the Discover Medan page."
+            label={imageSlotLabels.discoverHero}
+            onCropChange={(crop) => saveCrop("discoverHero", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "discoverHero" })
+            }
+            uploadLabel={
+              uploading === "discoverHero"
+                ? "Uploading..."
+                : "Upload Discover Hero"
+            }
+            url={content.discoverHeroImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "discoverIntro")}
+            description="Image shown beside the Explore Medan introduction."
+            label={imageSlotLabels.discoverIntro}
+            onCropChange={(crop) => saveCrop("discoverIntro", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "discoverIntro" })
+            }
+            uploadLabel={
+              uploading === "discoverIntro"
+                ? "Uploading..."
+                : "Upload Intro Image"
+            }
+            url={content.discoverIntroImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "discoverFood")}
+            description="Image used in the Local Food section."
+            label={imageSlotLabels.discoverFood}
+            onCropChange={(crop) => saveCrop("discoverFood", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "discoverFood" })
+            }
+            uploadLabel={
+              uploading === "discoverFood"
+                ? "Uploading..."
+                : "Upload Food Image"
+            }
+            url={content.discoverFoodImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "discoverSupper")}
+            description="Image used in the Snacks & Supper Spots section."
+            label={imageSlotLabels.discoverSupper}
+            onCropChange={(crop) => saveCrop("discoverSupper", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "discoverSupper" })
+            }
+            uploadLabel={
+              uploading === "discoverSupper"
+                ? "Uploading..."
+                : "Upload Supper Image"
+            }
+            url={content.discoverSupperImageUrl}
+          />
+          <SitePhotoSlot
+            crop={cropForSlot(content, "discoverCafe")}
+            description="Image used in the Cafes section."
+            label={imageSlotLabels.discoverCafe}
+            onCropChange={(crop) => saveCrop("discoverCafe", crop)}
+            onUpload={(event) =>
+              upload(event, "gallery", { slot: "discoverCafe" })
+            }
+            uploadLabel={
+              uploading === "discoverCafe"
+                ? "Uploading..."
+                : "Upload Cafe Image"
+            }
+            url={content.discoverCafeImageUrl}
+          />
+        </div>
+      </div>
+
+      <div className="admin-panel">
+        <div className="section-heading" style={{ marginBottom: 12 }}>
+          <div>
+            <p className="eyebrow">Invitation Gallery</p>
+            <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+              {content.gallery.length} photos
+            </h3>
+            <p className="muted" style={{ marginTop: 6 }}>
+              Photos shown in the invitation page&apos;s Our Moments section.
+            </p>
+          </div>
           <label className="button button-muted">
             <ImagePlus size={17} />
-            {uploading === "hero" ? "Uploading..." : "Upload Hero"}
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(event) => upload(event, "hero")}
-              style={{ display: "none" }}
-            />
-          </label>
-          <label className="button button-muted">
-            <ImagePlus size={17} />
-            {uploading === "gallery" ? "Uploading..." : "Upload Gallery"}
+            {uploading === "gallery"
+              ? "Uploading..."
+              : "Upload Gallery Photos"}
             <input
               type="file"
               accept="image/*"
@@ -938,74 +2097,35 @@ function MediaView({
               style={{ display: "none" }}
             />
           </label>
-          <label className="button button-muted">
-            <Music2 size={17} />
-            {uploading === "music" ? "Uploading..." : "Upload Music"}
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={(event) => upload(event, "music")}
-              style={{ display: "none" }}
-            />
-          </label>
-          <button className="button button-muted" type="button" onClick={publish} disabled={publishing}>
-            <Send size={17} />
-            {publishing ? "Publishing..." : "Publish Media"}
-          </button>
-        </div>
-        {notice ? <p className="muted" style={{ marginTop: 10 }}>{notice}</p> : null}
-      </div>
-
-      <div className="admin-panel">
-        <p className="eyebrow">Site Photo Slots</p>
-        <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>Photos guests see</h3>
-        <div className="media-list" style={{ marginTop: 12 }}>
-          <SitePhotoSlot
-            description="Full-screen opening image."
-            label={imageSlotLabels.hero}
-            url={content.heroImageUrl}
-          />
-          <SitePhotoSlot
-            description="Image shown below the opening invitation message."
-            label={imageSlotLabels.invitation}
-            url={content.invitationImageUrl}
-          />
-          <SitePhotoSlot
-            description="Image shown above the story section."
-            label={imageSlotLabels.story}
-            url={content.storyImageUrl}
-          />
-        </div>
-      </div>
-
-      <div className="admin-panel">
-        <div className="section-heading" style={{ marginBottom: 12 }}>
-          <div>
-            <p className="eyebrow">Gallery</p>
-            <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>{content.gallery.length} photos</h3>
-          </div>
         </div>
         <div className="media-list">
           {content.gallery.map((asset) => (
             <div className="media-preview-row" key={asset.id}>
-              <Image src={asset.url} alt={asset.alt.en} width={160} height={120} unoptimized />
+              <Image
+                src={asset.url}
+                alt={asset.alt.en}
+                width={160}
+                height={120}
+                unoptimized
+              />
               <div>
                 <p>{asset.alt.en}</p>
-                <p className="muted" style={{ marginTop: 6 }}>{asset.url}</p>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                  <button className="button button-muted" type="button" onClick={() => setImageSlot("hero", asset.url)}>
-                    <ImagePlus size={15} />
-                    Set Hero
-                  </button>
-                  <button className="button button-muted" type="button" onClick={() => setImageSlot("invitation", asset.url)}>
-                    <ImagePlus size={15} />
-                    Set Invitation
-                  </button>
-                  <button className="button button-muted" type="button" onClick={() => setImageSlot("story", asset.url)}>
-                    <ImagePlus size={15} />
-                    Set Story
-                  </button>
-                  <button className="button button-muted" type="button" onClick={() => remove("gallery", asset.url)}>
+                <p className="muted" style={{ marginTop: 6 }}>
+                  {asset.url}
+                </p>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    marginTop: 12,
+                  }}
+                >
+                  <button
+                    className="button button-muted"
+                    type="button"
+                    onClick={() => remove("gallery", asset.url)}
+                  >
                     <Trash2 size={15} />
                     Remove
                   </button>
@@ -1021,17 +2141,55 @@ function MediaView({
         {content.musicUrl ? (
           <div style={{ marginTop: 12 }}>
             <audio controls src={content.musicUrl} style={{ width: "100%" }} />
-            <p className="muted" style={{ marginTop: 8 }}>{content.musicUrl}</p>
-            <button className="button button-muted" type="button" onClick={() => remove("music", content.musicUrl || "")} style={{ marginTop: 12 }}>
-              <Trash2 size={15} />
-              Remove Music
-            </button>
+            <p className="muted" style={{ marginTop: 8 }}>
+              {content.musicUrl}
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                marginTop: 12,
+              }}
+            >
+              <label className="button button-muted">
+                <Music2 size={17} />
+                {uploading === "music" ? "Uploading..." : "Replace Music"}
+                <input
+                  type="file"
+                  accept="audio/*"
+                  onChange={(event) => upload(event, "music")}
+                  style={{ display: "none" }}
+                />
+              </label>
+              <button
+                className="button button-muted"
+                type="button"
+                onClick={() => remove("music", content.musicUrl || "")}
+              >
+                <Trash2 size={15} />
+                Remove Music
+              </button>
+            </div>
           </div>
         ) : (
-          <p className="muted" style={{ marginTop: 8 }}>
-            <Music2 size={15} style={{ display: "inline", marginRight: 6 }} />
-            No music uploaded yet. The site starts music only after the guest taps the opening button.
-          </p>
+          <div style={{ marginTop: 8 }}>
+            <p className="muted">
+              <Music2 size={15} style={{ display: "inline", marginRight: 6 }} />
+              No music uploaded yet. The site starts music only after the guest
+              taps the opening button.
+            </p>
+            <label className="button button-muted" style={{ marginTop: 12 }}>
+              <Music2 size={17} />
+              {uploading === "music" ? "Uploading..." : "Upload Music"}
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={(event) => upload(event, "music")}
+                style={{ display: "none" }}
+              />
+            </label>
+          </div>
         )}
       </div>
     </div>
@@ -1039,22 +2197,188 @@ function MediaView({
 }
 
 function SitePhotoSlot({
+  crop = defaultImageCrop,
   description,
   label,
-  url
+  onCropChange,
+  onUpload,
+  uploadLabel,
+  url,
 }: {
+  crop?: ImageCropSettings;
   description: string;
   label: string;
+  onCropChange: (crop: ImageCropSettings) => void;
+  onUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+  uploadLabel: string;
   url: string;
 }) {
+  const [draftCrop, setDraftCrop] = useState(() => normalizeImageCrop(crop));
+
+  function updateCrop(
+    viewport: keyof ImageCropSettings,
+    axis: "x" | "y" | "zoom",
+    value: string,
+  ) {
+    setDraftCrop((current) =>
+      normalizeImageCrop({
+        ...current,
+        [viewport]: {
+          ...current[viewport],
+          [axis]: Number(value),
+        },
+      }),
+    );
+  }
+
+  function resetCrop() {
+    setDraftCrop(defaultImageCrop);
+  }
+
   return (
     <div className="media-preview-row">
       <Image src={url} alt="" width={160} height={120} unoptimized />
       <div>
         <p className="eyebrow">{label}</p>
         <p style={{ marginTop: 6 }}>{url}</p>
-        <p className="muted" style={{ marginTop: 8 }}>{description}</p>
+        <p className="muted" style={{ marginTop: 8 }}>
+          {description}
+        </p>
+        <div className="media-crop-editor">
+          <div className="media-crop-preview-grid">
+            <CropPreview
+              crop={draftCrop}
+              label="Desktop"
+              url={url}
+              viewport="desktop"
+            />
+            <CropPreview
+              crop={draftCrop}
+              label="Mobile"
+              url={url}
+              viewport="mobile"
+            />
+          </div>
+          <CropSliders
+            crop={draftCrop}
+            label="Desktop focal point"
+            onChange={(axis, value) => updateCrop("desktop", axis, value)}
+            viewport="desktop"
+          />
+          <CropSliders
+            crop={draftCrop}
+            label="Mobile focal point"
+            onChange={(axis, value) => updateCrop("mobile", axis, value)}
+            viewport="mobile"
+          />
+          <div className="media-crop-actions">
+            <button
+              className="button button-muted"
+              type="button"
+              onClick={() => onCropChange(draftCrop)}
+            >
+              <Save size={15} />
+              Save crop
+            </button>
+            <button
+              className="button button-muted"
+              type="button"
+              onClick={resetCrop}
+            >
+              Reset center
+            </button>
+            <label className="button button-muted">
+              <ImagePlus size={15} />
+              {uploadLabel}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={onUpload}
+                style={{ display: "none" }}
+              />
+            </label>
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function CropPreview({
+  crop,
+  label,
+  url,
+  viewport,
+}: {
+  crop: ImageCropSettings;
+  label: string;
+  url: string;
+  viewport: keyof ImageCropSettings;
+}) {
+  return (
+    <figure className={`media-crop-preview ${viewport}`}>
+      <Image
+        src={url}
+        alt=""
+        fill
+        sizes="220px"
+        unoptimized
+        style={{
+          objectPosition: imageCropPosition(crop, viewport),
+          transform: `scale(${imageCropScale(crop, viewport)})`,
+          transformOrigin: imageCropPosition(crop, viewport),
+        }}
+      />
+      <figcaption>{label}</figcaption>
+    </figure>
+  );
+}
+
+function CropSliders({
+  crop,
+  label,
+  onChange,
+  viewport,
+}: {
+  crop: ImageCropSettings;
+  label: string;
+  onChange: (axis: "x" | "y" | "zoom", value: string) => void;
+  viewport: keyof ImageCropSettings;
+}) {
+  return (
+    <div className="media-crop-sliders">
+      <p>{label}</p>
+      <label>
+        <span>Horizontal {crop[viewport].x}%</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={crop[viewport].x}
+          onChange={(event) => onChange("x", event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Vertical {crop[viewport].y}%</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={crop[viewport].y}
+          onChange={(event) => onChange("y", event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Zoom {crop[viewport].zoom.toFixed(2)}x</span>
+        <input
+          type="range"
+          min="1"
+          max="2.5"
+          step="0.05"
+          value={crop[viewport].zoom}
+          onChange={(event) => onChange("zoom", event.target.value)}
+        />
+      </label>
     </div>
   );
 }
@@ -1078,7 +2402,9 @@ function AnalyticsView({ snapshot }: { snapshot: AdminSnapshot }) {
               {snapshot.history.map((item) => (
                 <tr key={item.id}>
                   <td>{formatDateTime(item.changedAt)}</td>
-                  <td><StatusPill status={item.status} /></td>
+                  <td>
+                    <StatusPill status={item.status} />
+                  </td>
                   <td>{item.changedBy}</td>
                 </tr>
               ))}
@@ -1094,8 +2420,12 @@ function ExportView() {
   return (
     <div className="admin-panel">
       <p className="eyebrow">Backup</p>
-      <h3 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>Export guest and RSVP data</h3>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}>
+      <h3 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>
+        Export guest and RSVP data
+      </h3>
+      <div
+        style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}
+      >
         <a className="button button-muted" href="/api/admin/export?format=csv">
           <Download size={17} />
           CSV
@@ -1103,6 +2433,70 @@ function ExportView() {
         <a className="button button-muted" href="/api/admin/export?format=json">
           <Download size={17} />
           JSON
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function InviteTypeFlowPreview({
+  inviteType,
+}: {
+  inviteType: PublicInviteType;
+}) {
+  if (inviteType.flow === "generic") return null;
+
+  const isFamily = inviteType.flow === "family";
+
+  return (
+    <div className="flow-preview-panel">
+      <div>
+        <p className="eyebrow">
+          {isFamily ? "Family flow pages" : "Overseas flow pages"}
+        </p>
+        <h5 className="serif">What this link will contain</h5>
+      </div>
+      <div className="flow-preview-grid">
+        <div>
+          <strong>1. Wedding RSVP</strong>
+          <p className="muted">
+            Current RSVP form for attendance, guest count, guest names, events,
+            and meal preference.
+          </p>
+        </div>
+        <div>
+          <strong>2. Travel & Accommodation</strong>
+          <p className="muted">
+            Arrival and departure details with accommodation information
+            {isFamily
+              ? ", without roommate preference questions."
+              : " and roommate preference questions."}
+          </p>
+        </div>
+        <div>
+          <strong>3. Medan Guide</strong>
+          <p className="muted">
+            Placeholder newsletter section for food, places, and things guests
+            can enjoy around Medan.
+          </p>
+        </div>
+      </div>
+      <div className="flow-preview-actions">
+        <a
+          className="button button-muted"
+          href={isFamily ? "/family" : "/overseas"}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Preview {isFamily ? "/family" : "/overseas"}
+        </a>
+        <a
+          className="button button-muted"
+          href={`/invite/${inviteType.code}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Preview /invite/{inviteType.code}
         </a>
       </div>
     </div>
@@ -1120,7 +2514,7 @@ function useFilteredInvitations(invitations: InvitationGroup[], query: string) {
         invitation.code,
         invitation.side,
         invitation.rsvp.status,
-        ...invitation.guests.map((guest) => guest.name)
+        ...invitation.guests.map((guest) => guest.name),
       ]
         .join(" ")
         .toLowerCase();
@@ -1135,18 +2529,20 @@ function emptyInvitationDraft(): AdminInvitationUpsert {
     greeting: "",
     phone: "",
     email: "",
+    maxGuests: 1,
     side: "joint",
+    flow: "generic",
     privateNotes: {
       en: "",
-      id: ""
+      id: "",
     },
     eligibleEvents: [...eventKeys],
     guests: [
       {
         name: "",
-        mealPreference: "unset"
-      }
-    ]
+        mealPreference: "unset",
+      },
+    ],
   };
 }
 
@@ -1157,17 +2553,19 @@ function invitationToDraft(invitation: InvitationGroup): AdminInvitationUpsert {
     greeting: invitation.greeting,
     phone: invitation.phone || "",
     email: invitation.email || "",
+    maxGuests: invitation.maxGuests || invitation.guests.length || 1,
     side: invitation.side,
+    flow: invitation.flow,
     privateNotes: {
       en: invitation.privateNotes?.en || "",
-      id: invitation.privateNotes?.id || ""
+      id: invitation.privateNotes?.id || "",
     },
     eligibleEvents: invitation.eligibleEvents,
     guests: invitation.guests.map((guest) => ({
       id: guest.id,
       name: guest.name,
-      mealPreference: guest.mealPreference
-    }))
+      mealPreference: guest.mealPreference,
+    })),
   };
 }
 
@@ -1180,6 +2578,6 @@ function formatDateTime(value?: string) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false
+    hour12: false,
   }).format(new Date(value));
 }
