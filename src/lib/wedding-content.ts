@@ -82,6 +82,7 @@ export const weddingContent: WeddingContent = {
   mobileImages: {},
   imageFrames: {},
   brideGroomFrame: "arch",
+  openingAnimation: "classic",
   discoverMedan: createDefaultDiscoverMedanContent(),
   publicInviteTypes: [
     {

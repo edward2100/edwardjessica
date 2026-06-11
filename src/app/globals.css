@@ -216,6 +216,43 @@ textarea {
   color: rgba(255, 255, 255, 0.86);
 }
 
+/* Desktop hero: the whole group (language toggle, greeting, title, subtitle,
+   button) sits in the vertical middle, horizontally centered, with the couple
+   name on a single line. Mobile (≤860px) keeps the bottom-anchored
+   left-aligned wrapping layout. */
+@media (min-width: 861px) {
+  .hero-content {
+    align-items: center;
+  }
+  .hero-content > div {
+    text-align: center;
+  }
+  /* With the open button present (classic mode) the group is visually
+     balanced around the name. Without it (cover modes) the toggle+greeting
+     above outweigh the subtitle below, sinking the name ~28px under the
+     centerline — bias only that case. */
+  .hero-content > div:not(:has(.hero-actions)) {
+    transform: translateY(-28px);
+  }
+  .hero-kicker {
+    text-align: center;
+    font-size: 0.92rem;
+  }
+  .hero-title {
+    max-width: none;
+    white-space: nowrap;
+    text-align: center;
+    /* 5vw keeps the one-line name ~50% of the viewport — inside the gap
+       between the couple at any width, and fluid when the window resizes.
+       The cap only engages on very wide screens (>1920px). */
+    font-size: clamp(2.6rem, 5vw, 6rem);
+  }
+  .hero-meta {
+    margin-inline: auto;
+    text-align: center;
+  }
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1168,6 +1205,50 @@ textarea {
   width: 100%;
   aspect-ratio: 16 / 10;
   background: var(--paper);
+  /* Collapsed teaser: ~30% of the photo shows under a brown tint. */
+  max-height: 76px;
+  overflow: hidden;
+  cursor: pointer;
+  /* Cap sits just above the photo's natural height so the whole duration
+     maps to visible motion — overshooting the cap reads as a stutter. */
+  transition: max-height 0.65s cubic-bezier(0.45, 0, 0.15, 1);
+}
+
+.discover-card-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(122, 86, 50, 0.58);
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+
+.discover-card-image:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.discover-card-image.is-open {
+  max-height: 260px;
+}
+.discover-card-image.is-open::after {
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .discover-card:hover .discover-card-image {
+    max-height: 260px;
+  }
+  .discover-card:hover .discover-card-image::after {
+    opacity: 0;
+  }
+}
+
+/* Single-column mobile cards are wider, so the 16/10 photo is taller. */
+@media (max-width: 860px) {
+  .discover-card-image.is-open {
+    max-height: 64vw;
+  }
 }
 
 .discover-card-image img {
@@ -1869,6 +1950,445 @@ textarea {
 .bg-frame-swatch-label {
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Admin: opening-animation swatch shapes                                     */
+/* -------------------------------------------------------------------------- */
+.opening-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Classic — mini hero: three small ivory lines + a gold pill. */
+.opening-swatch-classic {
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 8px;
+  background: var(--ink);
+  border: 0;
+}
+.opening-swatch-line {
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ivory);
+}
+.opening-swatch-line:nth-of-type(2) {
+  width: 18px;
+}
+.opening-swatch-pill {
+  margin-top: 4px;
+  width: 22px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--gold);
+}
+
+/* Moon gate — champagne circle with a gold ring dot in the center. */
+.opening-swatch-moongate {
+  border-radius: 50%;
+  background: var(--champagne);
+  border: 1px solid var(--champagne);
+}
+.opening-swatch-moongate::after {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: transparent;
+}
+
+/* Envelope — champagne rectangle with a triangular flap. */
+.opening-swatch-envelope {
+  background: #e9dcc3;
+  border: 1px solid var(--champagne);
+  border-radius: 3px;
+}
+.opening-swatch-env-flap {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(0 0, 100% 0, 50% 62%);
+  background: #d9c49f;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Opening cover — full-viewport overlay for moongate / envelope variants     */
+/* -------------------------------------------------------------------------- */
+.opening-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 2000; /* above the floating menu and music toggle */
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Moongate: the paper surface is the hole's box-shadow, NOT the cover root —
+   an opaque root would sit behind the growing hole and hide the page it
+   reveals. The monogram button covers the 24px resting hole. */
+.opening-cover.is-moongate {
+  background: transparent;
+}
+
+.opening-cover-lang {
+  position: absolute;
+  top: clamp(18px, 4vw, 34px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+
+/* ---- Moongate ---- */
+.moongate-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+}
+
+.moongate-hole {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 50%;
+  /* Paper-filled at rest so the resting hole is invisible regardless of what
+     sits over it; goes transparent the instant the bloom starts. */
+  background: var(--paper);
+  box-shadow: 0 0 0 250vmax var(--paper);
+  transform: scale(1);
+  pointer-events: none;
+}
+.moongate-stage.is-blooming .moongate-hole {
+  background: transparent;
+  transform: scale(220);
+  transition:
+    transform 0.9s cubic-bezier(0.6, 0, 0.35, 1),
+    background 0.12s linear;
+}
+
+.moongate-monogram {
+  position: relative;
+  z-index: 2;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 1px solid var(--gold);
+  background: var(--paper);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  animation: moongate-pulse 2.6s ease-in-out infinite;
+  transition: opacity 0.25s ease;
+}
+.moongate-monogram-mark {
+  font-style: italic;
+  color: var(--gold);
+  font-size: 1.5rem;
+}
+.moongate-hint {
+  position: relative;
+  z-index: 2;
+  font-size: 0.74rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: opacity 0.25s ease;
+}
+.moongate-stage.is-blooming .moongate-monogram,
+.moongate-stage.is-blooming .moongate-hint {
+  opacity: 0;
+  pointer-events: none;
+}
+.moongate-stage.is-blooming {
+  pointer-events: none;
+}
+
+@keyframes moongate-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* ---- Envelope ---- */
+.env-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+.env-stage.is-revealing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.env-scene-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: block;
+}
+
+.env-scene {
+  position: relative;
+  width: min(420px, 86vw);
+  aspect-ratio: 3 / 2;
+  perspective: 900px;
+  transition: transform 0.7s ease;
+}
+.env-stage.is-revealing .env-scene {
+  transform: scale(2.2);
+}
+
+/* Shell wrapper — back + front + flap drop away together in stage 2. */
+.env-shell {
+  position: absolute;
+  inset: 0;
+  transition:
+    transform 0.6s cubic-bezier(0.6, 0, 0.35, 1) 0.15s,
+    opacity 0.6s ease 0.15s;
+}
+.env-stage[data-stage="2"] .env-shell,
+.env-stage[data-stage="3"] .env-shell {
+  transform: translateY(60px);
+  opacity: 0;
+}
+.env-shell.is-hidden {
+  visibility: hidden;
+}
+
+.env-back {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #dcc9a4;
+  border-radius: 10px;
+}
+
+.env-front {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 70%;
+  z-index: 3;
+  background: #e9dcc3;
+  border-radius: 0 0 10px 10px;
+  box-shadow: var(--shadow);
+}
+/* Two subtle diagonal side-flap creases — decoration only. */
+.env-front::before,
+.env-front::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 52%;
+  background: rgba(47, 42, 36, 0.05);
+}
+.env-front::before {
+  left: 0;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+.env-front::after {
+  right: 0;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.env-flap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 62%;
+  z-index: 4;
+  background: #d9c49f;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  transform-origin: top;
+  transform: rotateX(0deg);
+  transition: transform 0.7s ease-in-out;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.env-stage[data-stage="1"] .env-flap,
+.env-stage[data-stage="2"] .env-flap,
+.env-stage[data-stage="3"] .env-flap {
+  transform: rotateX(178deg);
+}
+/* Drop the flap behind the letter only AFTER it has finished opening. */
+.env-stage[data-flap-behind="1"] .env-flap {
+  z-index: 1;
+}
+
+.env-seal {
+  margin-top: -14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--ivory);
+  font-style: italic;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(1);
+  opacity: 1;
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s ease;
+}
+.env-stage:not([data-stage="0"]) .env-seal {
+  transform: scale(1.5);
+  opacity: 0;
+}
+
+/* The tri-fold letter. Sits inside the envelope mouth (lower part hidden by
+   .env-front), then rises and unfolds. */
+.env-letter {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  width: 62%;
+  z-index: 2;
+  transform: translateX(-50%) translateY(0) scale(1);
+  transform-origin: center bottom;
+  transition: transform 0.8s cubic-bezier(0.6, 0, 0.35, 1);
+}
+.env-stage[data-stage="2"] .env-letter,
+.env-stage[data-stage="3"] .env-letter {
+  transform: translateX(-50%) translateY(-78%) scale(1.15);
+}
+
+.env-letter-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
+  background: var(--ivory);
+  backface-visibility: visible;
+}
+.env-letter-top {
+  border-bottom: 1px solid #e9dcc3;
+  transform-origin: bottom;
+  transform: rotateX(180deg);
+  transition: transform 0.5s ease-in-out;
+}
+.env-letter-middle {
+  border-top: 1px solid #e9dcc3;
+  border-bottom: 1px solid #e9dcc3;
+}
+.env-letter-bottom {
+  border-top: 1px solid #e9dcc3;
+  transform-origin: top;
+  transform: rotateX(-180deg);
+  transition: transform 0.5s ease-in-out 0.35s;
+}
+.env-stage[data-stage="3"] .env-letter-top,
+.env-stage[data-stage="3"] .env-letter-bottom {
+  transform: rotateX(0deg);
+}
+
+.env-letter-eyebrow,
+.env-letter-name,
+.env-letter-date {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.env-letter-eyebrow {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.env-letter-name {
+  font-style: italic;
+  font-size: 1.1rem;
+  color: var(--ink);
+}
+.env-letter-date {
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  color: var(--gold);
+}
+.env-stage[data-stage="3"] .env-letter-eyebrow,
+.env-stage[data-stage="3"] .env-letter-name,
+.env-stage[data-stage="3"] .env-letter-date {
+  opacity: 1;
+  transition: opacity 0.3s ease 0.5s;
+}
+
+.env-hint {
+  position: relative;
+  font-size: 0.74rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: opacity 0.3s ease;
+}
+.env-hint.is-fading {
+  opacity: 0;
+}
+
+/* Reduced motion: both variants collapse to a single tap → 0.4s opacity fade. */
+@media (prefers-reduced-motion: reduce) {
+  .moongate-monogram {
+    animation: none;
+  }
+  .moongate-hole,
+  .moongate-stage.is-blooming .moongate-hole {
+    transition: none;
+  }
+  .env-scene,
+  .env-shell,
+  .env-flap,
+  .env-letter,
+  .env-letter-top,
+  .env-letter-bottom,
+  .env-seal {
+    transition: none;
+  }
+  .opening-cover .moongate-stage,
+  .opening-cover .env-stage {
+    transition: opacity 0.4s ease;
+  }
+  .moongate-stage.is-blooming,
+  .env-stage.is-revealing {
+    opacity: 0;
+  }
+  .moongate-stage.is-blooming .moongate-hole {
+    /* No bloom — the paper shadow stays put and the stage opacity fade
+       reveals the page instead. */
+    transform: scale(1);
+  }
 }
 
 @media (max-width: 860px) {

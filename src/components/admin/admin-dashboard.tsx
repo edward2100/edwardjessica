@@ -54,6 +54,7 @@ import type {
   ImageFrameRatio,
   InvitationGroup,
   MediaAsset,
+  OpeningAnimation,
   PublicInviteFlow,
   PublicInviteType,
   RsvpStatus,
@@ -1749,6 +1750,11 @@ function ContentView({
         onDraft={setDraft}
       />
 
+      <OpeningAnimationEditor
+        draft={draft}
+        onDraft={setDraft}
+      />
+
       <DiscoverMedanEditor
         content={draft}
         onChange={setDraft}
@@ -2969,6 +2975,72 @@ function BrideGroomEditor({
             onClick={() => onDraft({ ...draft, brideGroomFrame: option.value })}
           >
             <span className={`bg-frame-swatch-shape bg-frame-${option.value}`} />
+            <span className="bg-frame-swatch-label">{option.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Opening animation selector — picks how guests first open the invitation.
+// Writes openingAnimation into the draft content (same whole-draft onDraft path
+// as BrideGroomEditor) so it persists with Save Draft and goes live with Publish.
+const openingAnimationOptions: { value: OpeningAnimation; label: string }[] = [
+  { value: "classic", label: "Classic" },
+  { value: "moongate", label: "Moon gate" },
+  { value: "envelope", label: "Envelope" },
+];
+
+function OpeningAnimationEditor({
+  draft,
+  onDraft,
+}: {
+  draft: WeddingContent;
+  onDraft: (content: WeddingContent) => void;
+}) {
+  const selected = draft.openingAnimation;
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div className="section-heading" style={{ marginBottom: 12 }}>
+        <div>
+          <p className="eyebrow">Opening Animation</p>
+          <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+            Opening animation
+          </h3>
+          <p className="muted" style={{ marginTop: 6 }}>
+            How guests first open the invitation. Publish to apply.
+          </p>
+        </div>
+      </div>
+      <div className="bg-frame-picker">
+        {openingAnimationOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`bg-frame-swatch${
+              option.value === selected ? " is-selected" : ""
+            }`}
+            aria-pressed={option.value === selected}
+            onClick={() =>
+              onDraft({ ...draft, openingAnimation: option.value })
+            }
+          >
+            <span
+              className={`bg-frame-swatch-shape opening-swatch opening-swatch-${option.value}`}
+            >
+              {option.value === "classic" ? (
+                <>
+                  <span className="opening-swatch-line" />
+                  <span className="opening-swatch-line" />
+                  <span className="opening-swatch-pill" />
+                </>
+              ) : null}
+              {option.value === "envelope" ? (
+                <span className="opening-swatch-env-flap" />
+              ) : null}
+            </span>
             <span className="bg-frame-swatch-label">{option.label}</span>
           </button>
         ))}

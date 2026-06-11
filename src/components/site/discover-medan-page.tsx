@@ -181,13 +181,30 @@ function DiscoverGuideCard({
   item: DiscoverMedanGuideItem;
   language: Language;
 }) {
+  // Photo starts mostly collapsed under a brown tint; hover (desktop) or
+  // tap (mobile) expands it to full height and clears the tint.
+  const [imageOpen, setImageOpen] = useState(false);
+
   return (
     <article
       className={`discover-card ${item.imageUrl ? "has-image" : ""}`}
       key={item.id}
     >
       {item.imageUrl ? (
-        <figure className="discover-card-image">
+        <figure
+          className={`discover-card-image${imageOpen ? " is-open" : ""}`}
+          role="button"
+          tabIndex={0}
+          aria-expanded={imageOpen}
+          aria-label={`${item.name[language]} — ${language === "id" ? "lihat foto" : "view photo"}`}
+          onClick={() => setImageOpen((open) => !open)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setImageOpen((open) => !open);
+            }
+          }}
+        >
           <Image
             src={item.imageUrl}
             alt=""

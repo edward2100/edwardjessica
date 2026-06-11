@@ -20,6 +20,7 @@ import { EmailOtpGate } from "@/components/site/email-otp-gate";
 import { FloatingRsvpButton } from "@/components/site/floating-rsvp-button";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { OpeningCover } from "@/components/site/opening-cover";
 import { PhoneCountryInput } from "@/components/site/phone-country-input";
 import { BrideGroomSection } from "@/components/site/bride-groom-section";
 import { SaveDateSection } from "@/components/site/save-date-section";
@@ -87,6 +88,11 @@ export function SelfRegisterInvitePage({
     [content.rsvpDeadline],
   );
 
+  // Non-classic opening animations replace the hero "Open Invitation" button
+  // with a full-screen cover, and the reveal lands guests on the hero top
+  // (no auto-scroll to details).
+  const useCover = content.openingAnimation !== "classic";
+
   function begin() {
     setHasOpenedInvitation(true);
     music.play();
@@ -96,6 +102,11 @@ export function SelfRegisterInvitePage({
         block: "start",
       });
     });
+  }
+
+  // Cover reveal completed: unlock the page WITHOUT scrolling to details.
+  function openFromCover() {
+    setHasOpenedInvitation(true);
   }
 
   function revealForm() {
@@ -228,6 +239,18 @@ export function SelfRegisterInvitePage({
       {hasOpenedInvitation ? <FloatingRsvpButton /> : null}
       <RegisterBackgroundMusic src={content.musicUrl} />
 
+      {useCover && !hasOpenedInvitation ? (
+        <OpeningCover
+          variant={content.openingAnimation as "moongate" | "envelope"}
+          coupleName={content.coupleName}
+          language={language}
+          onLanguageChange={handleLanguageChange}
+          labels={c}
+          onOpened={openFromCover}
+          onFirstInteraction={music.play}
+        />
+      ) : null}
+
       {/* Hero — full-bleed, uses SlotImage for mobile/desktop source resolution */}
       <section className="hero">
         <SlotImage
@@ -245,16 +268,18 @@ export function SelfRegisterInvitePage({
             </p>
             <h1 className="hero-title serif">{content.coupleName}</h1>
             <p className="hero-meta">{text(content.openingText, language)}</p>
-            <div className="hero-actions hero-actions-centered">
-              <button
-                className="button button-primary hero-open-button"
-                type="button"
-                onClick={begin}
-                onPointerDown={music.play}
-              >
-                {c.openInvitation}
-              </button>
-            </div>
+            {useCover ? null : (
+              <div className="hero-actions hero-actions-centered">
+                <button
+                  className="button button-primary hero-open-button"
+                  type="button"
+                  onClick={begin}
+                  onPointerDown={music.play}
+                >
+                  {c.openInvitation}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </section>

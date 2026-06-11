@@ -115,6 +115,7 @@ export interface WeddingContent {
   mobileImages: Partial<Record<ImageCropSlot, string>>;
   imageFrames: Partial<Record<ImageCropSlot, ImageFrameRatio>>;
   brideGroomFrame: BrideGroomFrame;
+  openingAnimation: OpeningAnimation;
   discoverMedan: DiscoverMedanContent;
   publicInviteTypes: PublicInviteType[];
   gallery: MediaAsset[];
@@ -142,6 +143,8 @@ export type ImageCropSlot =
 export type ImageFrameRatio = "square" | "portrait" | "landscape";
 
 export type BrideGroomFrame = "arch" | "oval" | "octagon" | "petal";
+
+export type OpeningAnimation = "classic" | "moongate" | "envelope";
 
 export interface ImageFocalPoint {
   x: number;

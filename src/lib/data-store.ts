@@ -18,6 +18,7 @@ import type {
   ImageCropSlot,
   InvitationGroup,
   MediaAsset,
+  OpeningAnimation,
   PublicInviteFlow,
   PublicInviteType,
   RsvpHistoryItem,
@@ -152,6 +153,9 @@ function normalizeWeddingContent(
     imageFrames: content.imageFrames ?? weddingContent.imageFrames,
     // Existing published JSON has no brideGroomFrame — fall back to "arch".
     brideGroomFrame: normalizeBrideGroomFrame(content.brideGroomFrame),
+    // Existing published JSON has no openingAnimation — fall back to "classic"
+    // so the live site keeps its current open-invitation flow unchanged.
+    openingAnimation: normalizeOpeningAnimation(content.openingAnimation),
     discoverMedan: normalizeDiscoverMedanContent(content.discoverMedan),
     publicInviteTypes: normalizePublicInviteTypes(content.publicInviteTypes),
     gallery: content.gallery || weddingContent.gallery,
@@ -166,6 +170,18 @@ function normalizeBrideGroomFrame(value: unknown): BrideGroomFrame {
   return brideGroomFrames.includes(value as BrideGroomFrame)
     ? (value as BrideGroomFrame)
     : "arch";
+}
+
+const openingAnimations: OpeningAnimation[] = [
+  "classic",
+  "moongate",
+  "envelope",
+];
+
+function normalizeOpeningAnimation(value: unknown): OpeningAnimation {
+  return openingAnimations.includes(value as OpeningAnimation)
+    ? (value as OpeningAnimation)
+    : "classic";
 }
 
 function normalizeLocalizedString(
