@@ -30,6 +30,7 @@ import {
   defaultImageCrop,
   FRAME_RATIOS,
   normalizeImageCrop,
+  normalizeImageFocal,
 } from "@/lib/image-crop";
 import {
   buildAdminWhatsAppMessage,
@@ -44,10 +45,12 @@ import type {
   AdminProfile,
   AdminSnapshot,
   AdminWhatsAppMessageType,
+  BrideGroomFrame,
   EventKey,
   GuestSide,
   ImageCropSettings,
   ImageCropSlot,
+  ImageFocalPoint,
   ImageFrameRatio,
   InvitationGroup,
   MediaAsset,
@@ -82,6 +85,8 @@ type ImageSlot =
   | "discoverSupper"
   | "discoverCafe"
   | "discoverPlaces"
+  | "bridePortrait"
+  | "groomPortrait"
   | "ogImage";
 
 const tabs: { id: Tab; label: string; icon: ElementType }[] = [
@@ -115,6 +120,8 @@ const imageSlotLabels: Record<ImageSlot, string> = {
   discoverSupper: "Snacks & Supper",
   discoverCafe: "Cafes",
   discoverPlaces: "Places to Visit",
+  bridePortrait: "Bride Portrait",
+  groomPortrait: "Groom Portrait",
   ogImage: "Link Preview (WhatsApp/OG)",
 };
 
@@ -141,11 +148,12 @@ const maxServerImageBytes = 4 * 1024 * 1024;
 const uploadTimeoutMs = 90_000;
 
 function imageUploadWidth(kind: MediaAsset["kind"], slot?: ImageSlot) {
-  if (kind === "hero") return 2400;
+  if (kind === "hero") return 3000;
   if (slot === "hero" || slot === "travelHero" || slot === "discoverHero") {
-    return 2400;
+    return 3000;
   }
-  return 1800;
+  // Wide enough that a 3x focal-point zoom still has ~850px of source pixels.
+  return 2560;
 }
 
 function isHeicImage(file: File) {
@@ -1736,6 +1744,11 @@ function ContentView({
         onDraft={setDraft}
       />
 
+      <BrideGroomEditor
+        draft={draft}
+        onDraft={setDraft}
+      />
+
       <DiscoverMedanEditor
         content={draft}
         onChange={setDraft}
@@ -2004,6 +2017,30 @@ function MediaView({
             onUploadMobile={(event) => upload(event, "gallery", { slot: "story", target: "mobile" })}
             onRemoveMobile={() => removeMobileSlot("story")}
             slot="story"
+            uploading={uploading}
+          />
+          <SitePhotoSlot
+            content={content}
+            description="Portrait photo of the bride in the Bride & Groom section."
+            label={imageSlotLabels.bridePortrait}
+            onCropChange={(crop) => saveCrop("bridePortrait", crop)}
+            onFrameChange={(ratio) => saveFrame("bridePortrait", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "bridePortrait", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "bridePortrait", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("bridePortrait")}
+            slot="bridePortrait"
+            uploading={uploading}
+          />
+          <SitePhotoSlot
+            content={content}
+            description="Portrait photo of the groom in the Bride & Groom section."
+            label={imageSlotLabels.groomPortrait}
+            onCropChange={(crop) => saveCrop("groomPortrait", crop)}
+            onFrameChange={(ratio) => saveFrame("groomPortrait", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "groomPortrait", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "groomPortrait", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("groomPortrait")}
+            slot="groomPortrait"
             uploading={uploading}
           />
         </div>
@@ -2355,61 +2392,68 @@ function MediaView({
 // ── F1: WYSIWYG drag-to-crop editor ──────────────────────────────────────────
 // The user drags the image inside a fixed-size frame preview.
 // Drag delta is converted to focal-point x/y % (inverted so image follows cursor).
-// A zoom slider (1–2.5) sits below the preview.
+// A zoom slider (1–3) sits below the preview.
 // Storage format unchanged: { desktop: {x,y,zoom}, mobile: {x,y,zoom} }.
 function WysiwygCropEditor({
-  crop,
+  focal: focalProp,
   frameRatio,
   label,
-  onCropChange,
+  onCommit,
   url,
-  viewport,
 }: {
-  crop: ImageCropSettings;
+  focal: ImageFocalPoint;
   frameRatio: string; // e.g. "3 / 2"
   label: string;
-  onCropChange: (crop: ImageCropSettings) => void;
+  onCommit: (focal: ImageFocalPoint) => void;
   url: string;
-  viewport: keyof ImageCropSettings;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
-  // Local optimistic crop so the preview follows the cursor instantly.
-  // We persist (onCropChange → server) only on release, not on every move,
+  // The editor owns ONLY its viewport's focal point. It must never see (or
+  // emit) the other viewport's values — a previous design passed the whole
+  // {desktop, mobile} object through both pane editors, and whichever pane
+  // committed last clobbered the other viewport with a mount-time stale copy.
+  //
+  // Local optimistic focal so the preview follows the cursor instantly.
+  // We persist (onCommit → parent) only on release, not on every move,
   // otherwise dragging fires dozens of saves/sec and the preview lags behind.
-  const [localCrop, setLocalCrop] = useState<ImageCropSettings>(crop);
-  // latestRef always holds the newest crop SYNCHRONOUSLY. The release handlers
-  // (onPointerUp / commitZoom) read from it rather than the `localCrop` closure,
+  const [localFocal, setLocalFocal] = useState<ImageFocalPoint>(focalProp);
+  // latestRef always holds the newest focal SYNCHRONOUSLY. The release handlers
+  // (onPointerUp / commitZoom) read from it rather than the `localFocal` closure,
   // which can be stale on fast drags (the final pointermove may not have
   // re-rendered before pointerup fires) — that stale read meant releases were
   // persisting the pre-drag value, so crop changes never saved.
-  const latestRef = useRef<ImageCropSettings>(crop);
+  const latestRef = useRef<ImageFocalPoint>(focalProp);
 
-  // Reset local state only when a *different* image is loaded into this editor.
-  // (Syncing on every `crop` change would revert our own optimistic edits when
-  // the saved value round-trips back through props.)
-  const lastUrl = useRef(url);
+  // Adopt external focal changes (Reset button, fresh server state) unless a
+  // drag is in progress. Our own commits round-trip back as an identical value,
+  // so this never reverts an optimistic edit.
   useEffect(() => {
-    if (lastUrl.current !== url) {
-      lastUrl.current = url;
-      setLocalCrop(crop);
-      latestRef.current = crop;
+    if (dragging) return;
+    const current = latestRef.current;
+    if (
+      focalProp.x !== current.x ||
+      focalProp.y !== current.y ||
+      focalProp.zoom !== current.zoom
+    ) {
+      latestRef.current = focalProp;
+      setLocalFocal(focalProp);
     }
-  }, [url, crop]);
+  }, [focalProp, dragging]);
 
-  const focal = localCrop[viewport];
+  const focal = localFocal;
 
   // Update preview (async render) + ref (sync, authoritative) together.
-  function applyLocal(next: ImageCropSettings) {
+  function applyLocal(next: ImageFocalPoint) {
     latestRef.current = next;
-    setLocalCrop(next);
+    setLocalFocal(next);
   }
 
   // Pointer events (works for mouse + touch)
   function onPointerDown(e: React.PointerEvent) {
     e.currentTarget.setPointerCapture(e.pointerId);
-    const f = latestRef.current[viewport];
+    const f = latestRef.current;
     dragStart.current = { px: e.clientX, py: e.clientY, x: f.x, y: f.y };
     setDragging(true);
   }
@@ -2417,7 +2461,7 @@ function WysiwygCropEditor({
   function onPointerMove(e: React.PointerEvent) {
     if (!dragStart.current || !frameRef.current) return;
     const frame = frameRef.current.getBoundingClientRect();
-    const scale = latestRef.current[viewport].zoom;
+    const scale = latestRef.current.zoom;
     // delta in px → % of frame, inverted (dragging the image right reveals the left)
     const dxPct = ((e.clientX - dragStart.current.px) * 100) / (frame.width * scale);
     const dyPct = ((e.clientY - dragStart.current.py) * 100) / (frame.height * scale);
@@ -2425,10 +2469,10 @@ function WysiwygCropEditor({
     const newY = Math.min(100, Math.max(0, Math.round(dragStart.current.y - dyPct)));
     // Update local preview only — no server write while dragging.
     applyLocal(
-      normalizeImageCrop({
-        ...latestRef.current,
-        [viewport]: { ...latestRef.current[viewport], x: newX, y: newY },
-      }),
+      normalizeImageFocal(
+        { ...latestRef.current, x: newX, y: newY },
+        latestRef.current,
+      ),
     );
   }
 
@@ -2436,14 +2480,14 @@ function WysiwygCropEditor({
     if (dragStart.current) {
       dragStart.current = null;
       setDragging(false);
-      onCropChange(latestRef.current); // persist the latest, on release
+      onCommit(latestRef.current); // persist the latest, on release
     }
   }
 
   // Keyboard nudge — arrow keys for accessibility (single step, persist immediately)
   function onKeyDown(e: React.KeyboardEvent) {
-    const base = latestRef.current[viewport];
-    const updates: Partial<typeof base> = {};
+    const base = latestRef.current;
+    const updates: Partial<ImageFocalPoint> = {};
     const step = e.shiftKey ? 5 : 1;
     if (e.key === "ArrowLeft") updates.x = Math.max(0, base.x - step);
     if (e.key === "ArrowRight") updates.x = Math.min(100, base.x + step);
@@ -2451,26 +2495,23 @@ function WysiwygCropEditor({
     if (e.key === "ArrowDown") updates.y = Math.min(100, base.y + step);
     if (Object.keys(updates).length) {
       e.preventDefault();
-      const next = normalizeImageCrop({
-        ...latestRef.current,
-        [viewport]: { ...base, ...updates },
-      });
+      const next = normalizeImageFocal({ ...base, ...updates }, base);
       applyLocal(next);
-      onCropChange(next);
+      onCommit(next);
     }
   }
 
   // Zoom slider: live local preview while sliding, persist on release.
   function onZoomInput(value: number) {
     applyLocal(
-      normalizeImageCrop({
-        ...latestRef.current,
-        [viewport]: { ...latestRef.current[viewport], zoom: value },
-      }),
+      normalizeImageFocal(
+        { ...latestRef.current, zoom: value },
+        latestRef.current,
+      ),
     );
   }
   function commitZoom() {
-    onCropChange(latestRef.current);
+    onCommit(latestRef.current);
   }
 
   // Compute CSS for the image inside the frame
@@ -2530,7 +2571,7 @@ function WysiwygCropEditor({
         <input
           type="range"
           min="1"
-          max="2.5"
+          max="3"
           step="0.05"
           value={focal.zoom}
           style={{ display: "block", width: "100%", marginTop: 4 }}
@@ -2590,9 +2631,14 @@ function SitePhotoSlot({
   const desktopFrameRatio = isHero ? "16 / 9" : FRAME_RATIOS[currentFrame];
   const mobileFrameRatio = isHero ? "9 / 16" : FRAME_RATIOS[currentFrame];
 
-  // Only update local state during drag; the "Save crop" button persists to API
-  function handleLocalCropChange(nextCrop: ImageCropSettings) {
-    setDraftCrop(nextCrop);
+  // Each pane commits only its own viewport; merge functionally so one pane
+  // can never overwrite the other's edits with a stale snapshot.
+  // The "Save crop" button persists the merged result to the API.
+  function handleFocalChange(
+    viewport: keyof ImageCropSettings,
+    focal: ImageFocalPoint,
+  ) {
+    setDraftCrop((prev) => ({ ...prev, [viewport]: focal }));
   }
 
   return (
@@ -2630,12 +2676,11 @@ function SitePhotoSlot({
             {!mobileUrl ? <span> · used everywhere if no mobile image is set</span> : null}
           </p>
           <WysiwygCropEditor
-            crop={draftCrop}
+            focal={draftCrop.desktop}
             frameRatio={desktopFrameRatio}
             label="Desktop"
-            onCropChange={handleLocalCropChange}
+            onCommit={(focal) => handleFocalChange("desktop", focal)}
             url={desktopUrl}
-            viewport="desktop"
           />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
             <label className="button button-muted">
@@ -2678,12 +2723,11 @@ function SitePhotoSlot({
               {!mobileUrl ? <span> · not set; desktop image used</span> : null}
             </p>
             <WysiwygCropEditor
-              crop={draftCrop}
+              focal={draftCrop.mobile}
               frameRatio={mobileFrameRatio}
               label="Mobile"
-              onCropChange={handleLocalCropChange}
+              onCommit={(focal) => handleFocalChange("mobile", focal)}
               url={mobileUrl || desktopUrl}
-              viewport="mobile"
             />
             <p className="muted" style={{ marginTop: 6, fontSize: "0.8em" }}>
               If only one image is set, it is used everywhere.
@@ -2875,6 +2919,59 @@ function EventsEditor({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Bride & Groom frame selector — picks the portrait frame shape applied on the
+// invite page. Writes brideGroomFrame into the draft content (same onDraft path
+// as EventsEditor) so it persists with Save Draft and goes live with Publish.
+const brideGroomFrameOptions: { value: BrideGroomFrame; label: string }[] = [
+  { value: "arch", label: "Arch" },
+  { value: "oval", label: "Oval" },
+  { value: "octagon", label: "Octagon" },
+  { value: "petal", label: "Petal" },
+];
+
+function BrideGroomEditor({
+  draft,
+  onDraft,
+}: {
+  draft: WeddingContent;
+  onDraft: (content: WeddingContent) => void;
+}) {
+  const selected = draft.brideGroomFrame;
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div className="section-heading" style={{ marginBottom: 12 }}>
+        <div>
+          <p className="eyebrow">Bride &amp; Groom</p>
+          <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+            Bride &amp; Groom frame
+          </h3>
+          <p className="muted" style={{ marginTop: 6 }}>
+            Choose the frame shape for the bride and groom portraits. Publish to
+            apply for guests.
+          </p>
+        </div>
+      </div>
+      <div className="bg-frame-picker">
+        {brideGroomFrameOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`bg-frame-swatch${
+              option.value === selected ? " is-selected" : ""
+            }`}
+            aria-pressed={option.value === selected}
+            onClick={() => onDraft({ ...draft, brideGroomFrame: option.value })}
+          >
+            <span className={`bg-frame-swatch-shape bg-frame-${option.value}`} />
+            <span className="bg-frame-swatch-label">{option.label}</span>
+          </button>
+        ))}
       </div>
     </div>
   );

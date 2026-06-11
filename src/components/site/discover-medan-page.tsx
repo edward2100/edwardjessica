@@ -192,6 +192,7 @@ function DiscoverGuideCard({
             src={item.imageUrl}
             alt=""
             fill
+            quality={100}
             sizes="(max-width: 860px) calc(100vw - 48px), 420px"
           />
         </figure>

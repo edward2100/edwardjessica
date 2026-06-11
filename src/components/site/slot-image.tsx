@@ -1,6 +1,10 @@
 import Image from "next/image";
 import type { ImageCropSlot, WeddingContent } from "@/lib/types";
-import { frameAspect, imageCropStyleVars } from "@/lib/image-crop";
+import {
+  frameAspect,
+  imageCropStyleVars,
+  normalizeImageCrop,
+} from "@/lib/image-crop";
 
 /**
  * SlotImage — shared guest-page image component.
@@ -101,11 +105,16 @@ export function SlotImage({
 }: SlotImageProps) {
   const cropVars = imageCropStyleVars(content, slot);
 
+  // A focal-point zoom magnifies 1/zoom of the source across the full frame,
+  // so the optimizer must serve zoom-times more pixels to stay sharp.
+  const crop = normalizeImageCrop(content.imageCrops?.[slot]);
+  const desktopSizes = `${Math.ceil(100 * crop.desktop.zoom)}vw`;
+  const mobileSizes = `${Math.ceil(100 * crop.mobile.zoom)}vw`;
+
   // Desktop URL (images[slot] ?? legacy field)
   const desktopSrc = resolveUrl(content, slot, false);
   // Mobile URL (mobileImages[slot] ?? desktop URL)
   const mobileSrc = resolveUrl(content, slot, true);
-  const hasSeparateMobile = mobileSrc !== desktopSrc;
 
   // No image set for this slot (e.g. an optional section photo not yet
   // uploaded) — render nothing rather than a broken <Image>.
@@ -126,45 +135,41 @@ export function SlotImage({
       "var(--image-origin-desktop, var(--image-position-desktop, center))",
   };
 
-  // For hero slots: just return the Image element; caller wraps it
+  // Both viewport images always render (CSS-only swap) — inline styles can't
+  // switch crop vars per viewport, so a single tag would pin the desktop crop
+  // even on phones. Identical sources resolve to one network fetch.
+  // For hero slots: just return the Image elements; caller wraps them
   if (isHeroSlot) {
     return (
       <>
-        {hasSeparateMobile ? (
-          <>
-            {/* Mobile image — hidden on md+ */}
-            <Image
-              src={mobileSrc}
-              alt={alt}
-              fill
-              priority={priority}
-              style={{
-                ...imageStyle,
-                objectPosition: "var(--image-position-mobile, var(--image-position-desktop, center))",
-                transform: "scale(var(--image-scale-mobile, var(--image-scale-desktop, 1)))",
-              }}
-              className={`md:hidden ${className ?? ""}`}
-            />
-            {/* Desktop image — hidden below md */}
-            <Image
-              src={desktopSrc}
-              alt={alt}
-              fill
-              priority={priority}
-              style={imageStyle}
-              className={`hidden md:block ${className ?? ""}`}
-            />
-          </>
-        ) : (
-          <Image
-            src={desktopSrc}
-            alt={alt}
-            fill
-            priority={priority}
-            style={imageStyle}
-            className={className}
-          />
-        )}
+        {/* Mobile image — hidden on md+ */}
+        <Image
+          src={mobileSrc}
+          alt={alt}
+          fill
+          priority={priority}
+          quality={100}
+          sizes={mobileSizes}
+          style={{
+            ...imageStyle,
+            objectPosition: "var(--image-position-mobile, var(--image-position-desktop, center))",
+            transform: "scale(var(--image-scale-mobile, var(--image-scale-desktop, 1)))",
+            transformOrigin:
+              "var(--image-origin-mobile, var(--image-origin-desktop, var(--image-position-desktop, center)))",
+          }}
+          className={`md:hidden ${className ?? ""}`}
+        />
+        {/* Desktop image — hidden below md */}
+        <Image
+          src={desktopSrc}
+          alt={alt}
+          fill
+          priority={priority}
+          quality={100}
+          sizes={desktopSizes}
+          style={imageStyle}
+          className={`hidden md:block ${className ?? ""}`}
+        />
       </>
     );
   }
@@ -175,44 +180,36 @@ export function SlotImage({
       className={`slot-image-frame ${className ?? ""}`}
       style={{ aspectRatio, position: "relative", overflow: "hidden" }}
     >
-      {hasSeparateMobile ? (
-        <>
-          {/* Mobile image — visible below md */}
-          <Image
-            src={mobileSrc}
-            alt={alt}
-            fill
-            priority={priority}
-            style={{
-              ...imageStyle,
-              objectPosition:
-                "var(--image-position-mobile, var(--image-position-desktop, center))",
-              transform:
-                "scale(var(--image-scale-mobile, var(--image-scale-desktop, 1)))",
-              transformOrigin:
-                "var(--image-origin-mobile, var(--image-origin-desktop, var(--image-position-desktop, center)))",
-            }}
-            className="md:hidden"
-          />
-          {/* Desktop image — visible at md+ */}
-          <Image
-            src={desktopSrc}
-            alt={alt}
-            fill
-            priority={priority}
-            style={imageStyle}
-            className="hidden md:block"
-          />
-        </>
-      ) : (
-        <Image
-          src={desktopSrc}
-          alt={alt}
-          fill
-          priority={priority}
-          style={imageStyle}
-        />
-      )}
+      {/* Mobile image — visible below md */}
+      <Image
+        src={mobileSrc}
+        alt={alt}
+        fill
+        priority={priority}
+        quality={100}
+        sizes={mobileSizes}
+        style={{
+          ...imageStyle,
+          objectPosition:
+            "var(--image-position-mobile, var(--image-position-desktop, center))",
+          transform:
+            "scale(var(--image-scale-mobile, var(--image-scale-desktop, 1)))",
+          transformOrigin:
+            "var(--image-origin-mobile, var(--image-origin-desktop, var(--image-position-desktop, center)))",
+        }}
+        className="md:hidden"
+      />
+      {/* Desktop image — visible at md+ */}
+      <Image
+        src={desktopSrc}
+        alt={alt}
+        fill
+        priority={priority}
+        quality={100}
+        sizes={desktopSizes}
+        style={imageStyle}
+        className="hidden md:block"
+      />
     </div>
   );
 }

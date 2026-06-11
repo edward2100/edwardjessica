@@ -81,6 +81,7 @@ export const weddingContent: WeddingContent = {
   images: {},
   mobileImages: {},
   imageFrames: {},
+  brideGroomFrame: "arch",
   discoverMedan: createDefaultDiscoverMedanContent(),
   publicInviteTypes: [
     {

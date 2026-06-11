@@ -20,6 +20,7 @@ import { EmailOtpGate } from "@/components/site/email-otp-gate";
 import { FloatingRsvpButton } from "@/components/site/floating-rsvp-button";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { BrideGroomSection } from "@/components/site/bride-groom-section";
 import { SaveDateSection } from "@/components/site/save-date-section";
 import { SlotImage } from "@/components/site/slot-image";
 import { StorySection } from "@/components/site/story-section";
@@ -219,6 +220,8 @@ export function InvitePage({
           </div>
         </div>
       </section>
+
+      <BrideGroomSection content={content} language={language} />
 
       <SaveDateSection content={content} labels={c} />
 

@@ -12,8 +12,9 @@ export interface CompressedImage {
 }
 
 const imageSizes: Record<Exclude<MediaAsset["kind"], "music">, number> = {
-  hero: 2400,
-  gallery: 1800,
+  hero: 3000,
+  // Wide enough that a 3x focal-point zoom still has ~850px of source pixels.
+  gallery: 2560,
 };
 
 function baseFileName(fileName: string) {

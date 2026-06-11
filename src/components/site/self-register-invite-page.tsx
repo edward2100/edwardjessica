@@ -21,6 +21,7 @@ import { FloatingRsvpButton } from "@/components/site/floating-rsvp-button";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
 import { PhoneCountryInput } from "@/components/site/phone-country-input";
+import { BrideGroomSection } from "@/components/site/bride-groom-section";
 import { SaveDateSection } from "@/components/site/save-date-section";
 import { SlotImage } from "@/components/site/slot-image";
 import { StorySection } from "@/components/site/story-section";
@@ -270,6 +271,8 @@ export function SelfRegisterInvitePage({
           </div>
         </div>
       </section>
+
+      <BrideGroomSection content={content} language={language} />
 
       <SaveDateSection content={content} labels={c} />
 

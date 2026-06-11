@@ -1,6 +1,7 @@
 import type {
   ImageCropSettings,
   ImageCropSlot,
+  ImageFocalPoint,
   ImageFrameRatio,
   WeddingContent,
 } from "@/lib/types";
@@ -24,6 +25,8 @@ export const imageCropSlots: ImageCropSlot[] = [
   "discoverSupper",
   "discoverCafe",
   "discoverPlaces",
+  "bridePortrait",
+  "groomPortrait",
 ];
 
 function clampPercent(value: unknown, fallback: number) {
@@ -35,23 +38,26 @@ function clampPercent(value: unknown, fallback: number) {
 function clampZoom(value: unknown, fallback: number) {
   const numberValue =
     typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(2.5, Math.max(1, Math.round(numberValue * 100) / 100));
+  return Math.min(3, Math.max(1, Math.round(numberValue * 100) / 100));
+}
+
+export function normalizeImageFocal(
+  focal: Partial<ImageFocalPoint> | null | undefined,
+  fallback: ImageFocalPoint,
+): ImageFocalPoint {
+  return {
+    x: clampPercent(focal?.x, fallback.x),
+    y: clampPercent(focal?.y, fallback.y),
+    zoom: clampZoom(focal?.zoom, fallback.zoom),
+  };
 }
 
 export function normalizeImageCrop(
   crop: Partial<ImageCropSettings> | null | undefined,
 ): ImageCropSettings {
   return {
-    desktop: {
-      x: clampPercent(crop?.desktop?.x, defaultImageCrop.desktop.x),
-      y: clampPercent(crop?.desktop?.y, defaultImageCrop.desktop.y),
-      zoom: clampZoom(crop?.desktop?.zoom, defaultImageCrop.desktop.zoom),
-    },
-    mobile: {
-      x: clampPercent(crop?.mobile?.x, defaultImageCrop.mobile.x),
-      y: clampPercent(crop?.mobile?.y, defaultImageCrop.mobile.y),
-      zoom: clampZoom(crop?.mobile?.zoom, defaultImageCrop.mobile.zoom),
-    },
+    desktop: normalizeImageFocal(crop?.desktop, defaultImageCrop.desktop),
+    mobile: normalizeImageFocal(crop?.mobile, defaultImageCrop.mobile),
   };
 }
 
@@ -107,6 +113,8 @@ const SLOT_FRAME_DEFAULTS: Partial<Record<ImageCropSlot, ImageFrameRatio>> = {
   discoverSupper: "landscape",
   discoverCafe: "landscape",
   discoverPlaces: "landscape",
+  bridePortrait: "portrait",
+  groomPortrait: "portrait",
 };
 
 /**

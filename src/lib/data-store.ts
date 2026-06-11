@@ -5,6 +5,7 @@ import type {
   AdminSnapshot,
   AdminWhatsAppMessageType,
   AdminRsvpUpdate,
+  BrideGroomFrame,
   DashboardStats,
   DiscoverMedanContent,
   DiscoverMedanGuideItem,
@@ -149,12 +150,22 @@ function normalizeWeddingContent(
     images: content.images ?? weddingContent.images,
     mobileImages: content.mobileImages ?? weddingContent.mobileImages,
     imageFrames: content.imageFrames ?? weddingContent.imageFrames,
+    // Existing published JSON has no brideGroomFrame — fall back to "arch".
+    brideGroomFrame: normalizeBrideGroomFrame(content.brideGroomFrame),
     discoverMedan: normalizeDiscoverMedanContent(content.discoverMedan),
     publicInviteTypes: normalizePublicInviteTypes(content.publicInviteTypes),
     gallery: content.gallery || weddingContent.gallery,
     events: normalizeWeddingEvents(content.events),
     notes: content.notes || weddingContent.notes,
   };
+}
+
+const brideGroomFrames: BrideGroomFrame[] = ["arch", "oval", "octagon", "petal"];
+
+function normalizeBrideGroomFrame(value: unknown): BrideGroomFrame {
+  return brideGroomFrames.includes(value as BrideGroomFrame)
+    ? (value as BrideGroomFrame)
+    : "arch";
 }
 
 function normalizeLocalizedString(
@@ -2248,7 +2259,9 @@ export async function setDraftImageSlot(
     | "discoverFood"
     | "discoverSupper"
     | "discoverCafe"
-    | "discoverPlaces",
+    | "discoverPlaces"
+    | "bridePortrait"
+    | "groomPortrait",
   url: string,
 ) {
   const content = await getDraftContent();
