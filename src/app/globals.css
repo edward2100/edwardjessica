@@ -671,6 +671,39 @@ textarea {
   filter: brightness(0.93);
 }
 
+/* Interactive "Our Moments" — expanding panels. The active/hovered panel
+   grows; the rest shrink. */
+.gallery-expand {
+  display: flex;
+  gap: 14px;
+}
+
+.gallery-expand .gallery-item {
+  flex: 1 1 0;
+  min-height: clamp(280px, 46vw, 440px);
+  cursor: pointer;
+  transition: flex-grow 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gallery-expand .gallery-item img {
+  object-position: center;
+  filter: none;
+}
+
+.gallery-expand .gallery-item.is-active {
+  flex-grow: 2.6;
+}
+
+/* On hover-capable devices, hovering takes precedence over the active panel. */
+@media (hover: hover) {
+  .gallery-expand:hover .gallery-item {
+    flex-grow: 1;
+  }
+  .gallery-expand:hover .gallery-item:hover {
+    flex-grow: 2.6;
+  }
+}
+
 .story-shell {
   display: grid;
   gap: 26px;

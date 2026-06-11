@@ -7,7 +7,7 @@ import {
   Users,
   Utensils,
 } from "lucide-react";
-import { GalleryImage } from "@/components/site/gallery-image";
+import { InteractiveGallery } from "@/components/site/interactive-gallery";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
@@ -346,11 +346,7 @@ export function SelfRegisterInvitePage({
                 <h2 className="title serif">{c.galleryTitle}</h2>
               </div>
             </div>
-            <div className="gallery-grid">
-              {content.gallery.map((asset) => (
-                <GalleryImage key={asset.id} src={asset.url} />
-              ))}
-            </div>
+            <InteractiveGallery assets={content.gallery} />
           </div>
         </section>
       ) : null}

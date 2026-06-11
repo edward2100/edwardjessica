@@ -9,7 +9,7 @@ import {
   Utensils,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { GalleryImage } from "@/components/site/gallery-image";
+import { InteractiveGallery } from "@/components/site/interactive-gallery";
 import Link from "next/link";
 import type { Route } from "next";
 import {
@@ -291,11 +291,7 @@ export function InvitePage({
                 <h2 className="title serif">{c.galleryTitle}</h2>
               </div>
             </div>
-            <div className="gallery-grid">
-              {content.gallery.map((asset) => (
-                <GalleryImage key={asset.id} src={asset.url} />
-              ))}
-            </div>
+            <InteractiveGallery assets={content.gallery} />
           </div>
         </section>
       ) : null}

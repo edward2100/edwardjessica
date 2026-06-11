@@ -183,8 +183,8 @@ export const weddingContent: WeddingContent = {
       venueName: "Vihara Sinar Buddha (BLIA) 印尼棉蘭佛光寺",
       venueAddress: "Vihara Sinar Buddha (BLIA) 印尼棉蘭佛光寺",
       note: {
-        en: "Dress code: socks are required at the venue.",
-        id: "Aturan berpakaian: kaus kaki diwajibkan di lokasi acara.",
+        en: "Dress Code: Socks required",
+        id: "Aturan Berpakaian: Wajib kaus kaki",
       },
       mapUrl: "https://maps.app.goo.gl/D6tQ235KKhddTEnN6?g_st=ic",
     },
@@ -212,8 +212,8 @@ export const weddingContent: WeddingContent = {
       venueAddress:
         "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia",
       note: {
-        en: "Dress code: semi formal.",
-        id: "Aturan berpakaian: semi formal.",
+        en: "Dress Code: Semi-formal",
+        id: "Aturan Berpakaian: Semi-formal",
       },
       mapUrl: "https://maps.app.goo.gl/hPL5x2kPToUaAK946",
     },
