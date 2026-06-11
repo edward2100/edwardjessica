@@ -324,7 +324,7 @@ export function SelfRegisterInvitePage({
             >
               <a
                 className="button button-muted"
-                href="/api/calendar"
+                href="/calendar.ics"
                 download="edward-jessica-wedding.ics"
               >
                 <CalendarDays size={17} />
@@ -986,7 +986,7 @@ function SelfRegisterSuccessCard({
         </button>
         <a
           className="button button-muted"
-          href="/api/calendar"
+          href="/calendar.ics"
           download="edward-jessica-wedding.ics"
         >
           <CalendarDays size={17} />

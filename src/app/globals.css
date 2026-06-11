@@ -69,13 +69,17 @@ textarea {
 .frame-landscape { aspect-ratio: 3 / 2; }
 
 .app-shell.hero-locked {
-  height: 100svh;
+  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
 .hero {
   position: relative;
-  min-height: 100svh;
+  /* dvh tracks the live viewport so the hero never leaves a gap below it after
+     the mobile address bar collapses (svh was too short post-navigation). */
+  min-height: 100vh;
+  min-height: 100dvh;
   isolation: isolate;
   overflow: hidden;
   background: #2f2a24;
@@ -178,7 +182,8 @@ textarea {
 
 .hero-content {
   display: grid;
-  min-height: 100svh;
+  min-height: 100vh;
+  min-height: 100dvh;
   align-items: end;
   max-width: 1180px;
   margin: 0 auto;
@@ -196,8 +201,10 @@ textarea {
 .hero-title {
   max-width: 780px;
   margin-top: 14px;
-  font-size: clamp(3.5rem, 14vw, 9.5rem);
-  line-height: 0.86;
+  /* Standardized hero scale — smaller mid-width (vw) coefficient so the title
+     doesn't dominate the image centre on tablets/iPad. */
+  font-size: clamp(2.6rem, 8vw, 6rem);
+  line-height: 0.9;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -776,7 +783,8 @@ textarea {
 
 .travel-hero .hero-title {
   max-width: min(980px, calc(100vw - 48px));
-  font-size: clamp(2.65rem, 8.2vw, 6.8rem);
+  /* Same standardized scale as the main hero title. */
+  font-size: clamp(2.6rem, 8vw, 6rem);
   line-height: 0.92;
   text-align: left;
   text-wrap: balance;

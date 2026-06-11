@@ -22,7 +22,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { ChangeEvent, ElementType, useMemo, useRef, useState } from "react";
+import { ChangeEvent, ElementType, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { DiscoverMedanEditor } from "@/components/admin/discover-medan-editor";
@@ -2358,50 +2358,102 @@ function WysiwygCropEditor({
   const frameRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
+  // Local optimistic crop so the preview follows the cursor instantly.
+  // We persist (onCropChange → server) only on release, not on every move,
+  // otherwise dragging fires dozens of saves/sec and the preview lags behind.
+  const [localCrop, setLocalCrop] = useState<ImageCropSettings>(crop);
+  // latestRef always holds the newest crop SYNCHRONOUSLY. The release handlers
+  // (onPointerUp / commitZoom) read from it rather than the `localCrop` closure,
+  // which can be stale on fast drags (the final pointermove may not have
+  // re-rendered before pointerup fires) — that stale read meant releases were
+  // persisting the pre-drag value, so crop changes never saved.
+  const latestRef = useRef<ImageCropSettings>(crop);
 
-  const focal = crop[viewport];
+  // Reset local state only when a *different* image is loaded into this editor.
+  // (Syncing on every `crop` change would revert our own optimistic edits when
+  // the saved value round-trips back through props.)
+  const lastUrl = useRef(url);
+  useEffect(() => {
+    if (lastUrl.current !== url) {
+      lastUrl.current = url;
+      setLocalCrop(crop);
+      latestRef.current = crop;
+    }
+  }, [url, crop]);
+
+  const focal = localCrop[viewport];
+
+  // Update preview (async render) + ref (sync, authoritative) together.
+  function applyLocal(next: ImageCropSettings) {
+    latestRef.current = next;
+    setLocalCrop(next);
+  }
 
   // Pointer events (works for mouse + touch)
   function onPointerDown(e: React.PointerEvent) {
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragStart.current = { px: e.clientX, py: e.clientY, x: focal.x, y: focal.y };
+    const f = latestRef.current[viewport];
+    dragStart.current = { px: e.clientX, py: e.clientY, x: f.x, y: f.y };
     setDragging(true);
   }
 
   function onPointerMove(e: React.PointerEvent) {
     if (!dragStart.current || !frameRef.current) return;
     const frame = frameRef.current.getBoundingClientRect();
-    const scale = focal.zoom;
-    // delta in px → % of frame, inverted (dragging right moves focal right)
+    const scale = latestRef.current[viewport].zoom;
+    // delta in px → % of frame, inverted (dragging the image right reveals the left)
     const dxPct = ((e.clientX - dragStart.current.px) * 100) / (frame.width * scale);
     const dyPct = ((e.clientY - dragStart.current.py) * 100) / (frame.height * scale);
     const newX = Math.min(100, Math.max(0, Math.round(dragStart.current.x - dxPct)));
     const newY = Math.min(100, Math.max(0, Math.round(dragStart.current.y - dyPct)));
-    onCropChange(
+    // Update local preview only — no server write while dragging.
+    applyLocal(
       normalizeImageCrop({
-        ...crop,
-        [viewport]: { ...focal, x: newX, y: newY },
+        ...latestRef.current,
+        [viewport]: { ...latestRef.current[viewport], x: newX, y: newY },
       }),
     );
   }
 
   function onPointerUp() {
-    dragStart.current = null;
-    setDragging(false);
+    if (dragStart.current) {
+      dragStart.current = null;
+      setDragging(false);
+      onCropChange(latestRef.current); // persist the latest, on release
+    }
   }
 
-  // Keyboard nudge — arrow keys for accessibility
+  // Keyboard nudge — arrow keys for accessibility (single step, persist immediately)
   function onKeyDown(e: React.KeyboardEvent) {
+    const base = latestRef.current[viewport];
+    const updates: Partial<typeof base> = {};
     const step = e.shiftKey ? 5 : 1;
-    const updates: Partial<typeof focal> = {};
-    if (e.key === "ArrowLeft") updates.x = Math.max(0, focal.x - step);
-    if (e.key === "ArrowRight") updates.x = Math.min(100, focal.x + step);
-    if (e.key === "ArrowUp") updates.y = Math.max(0, focal.y - step);
-    if (e.key === "ArrowDown") updates.y = Math.min(100, focal.y + step);
+    if (e.key === "ArrowLeft") updates.x = Math.max(0, base.x - step);
+    if (e.key === "ArrowRight") updates.x = Math.min(100, base.x + step);
+    if (e.key === "ArrowUp") updates.y = Math.max(0, base.y - step);
+    if (e.key === "ArrowDown") updates.y = Math.min(100, base.y + step);
     if (Object.keys(updates).length) {
       e.preventDefault();
-      onCropChange(normalizeImageCrop({ ...crop, [viewport]: { ...focal, ...updates } }));
+      const next = normalizeImageCrop({
+        ...latestRef.current,
+        [viewport]: { ...base, ...updates },
+      });
+      applyLocal(next);
+      onCropChange(next);
     }
+  }
+
+  // Zoom slider: live local preview while sliding, persist on release.
+  function onZoomInput(value: number) {
+    applyLocal(
+      normalizeImageCrop({
+        ...latestRef.current,
+        [viewport]: { ...latestRef.current[viewport], zoom: value },
+      }),
+    );
+  }
+  function commitZoom() {
+    onCropChange(latestRef.current);
   }
 
   // Compute CSS for the image inside the frame
@@ -2465,14 +2517,10 @@ function WysiwygCropEditor({
           step="0.05"
           value={focal.zoom}
           style={{ display: "block", width: "100%", marginTop: 4 }}
-          onChange={(e) =>
-            onCropChange(
-              normalizeImageCrop({
-                ...crop,
-                [viewport]: { ...focal, zoom: Number(e.target.value) },
-              }),
-            )
-          }
+          onChange={(e) => onZoomInput(Number(e.target.value))}
+          onPointerUp={commitZoom}
+          onKeyUp={commitZoom}
+          onBlur={commitZoom}
         />
       </label>
       <p className="muted" style={{ marginTop: 4, fontSize: "0.8em" }}>

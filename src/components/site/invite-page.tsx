@@ -270,7 +270,7 @@ export function InvitePage({
           >
             <a
               className="button button-muted"
-              href="/api/calendar"
+              href="/calendar.ics"
               download="edward-jessica-wedding.ics"
             >
               <CalendarDays size={17} />
@@ -927,7 +927,7 @@ function RsvpSuccessCard({
       <div className="confirmation-actions" style={{ justifyContent: "center" }}>
         <a
           className="button button-muted"
-          href="/api/calendar"
+          href="/calendar.ics"
           download="edward-jessica-wedding.ics"
         >
           <CalendarDays size={17} />

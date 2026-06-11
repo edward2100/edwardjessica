@@ -32,7 +32,7 @@ export function SaveDateSection({
             <h3 className="invitation-venue serif">{labels.weddingVenueName}</h3>
             <p className="invitation-city serif">{labels.weddingVenueCity}</p>
             <InvitationMapLink mapsUrl={content.venue.mapsUrl} venueName={content.venue.name} openMapLabel={labels.openMap} />
-            <a className="button button-muted save-date-calendar-button" href="/api/calendar" download="edward-jessica-wedding.ics">
+            <a className="button button-muted save-date-calendar-button" href="/calendar.ics" download="edward-jessica-wedding.ics">
               <CalendarDays size={17} />
               {labels.addToCalendar}
             </a>
