@@ -121,10 +121,11 @@ export function DiscoverMedanPage({
 
 function sectionImageCropSlot(
   sectionId: DiscoverMedanSectionId,
-): ImageCropSlot {
+): ImageCropSlot | null {
   if (sectionId === "localFood") return "discoverFood";
   if (sectionId === "supper") return "discoverSupper";
-  return "discoverCafe";
+  if (sectionId === "cafe") return "discoverCafe";
+  return null; // placesToVisit has no dedicated section photo
 }
 
 function GuideSection({
@@ -134,7 +135,7 @@ function GuideSection({
   section,
 }: {
   content: WeddingContent;
-  cropSlot: ImageCropSlot;
+  cropSlot: ImageCropSlot | null;
   language: Language;
   section: DiscoverMedanGuideSection;
 }) {
@@ -148,13 +149,15 @@ function GuideSection({
         </div>
         <p className="muted">{section.intro[language]}</p>
       </div>
-      {/* F3: adopt SlotImage for section photos; className applied to slot-image-frame */}
-      <SlotImage
-        content={content}
-        slot={cropSlot}
-        alt=""
-        className="discover-section-photo"
-      />
+      {/* F3: section photo only for sections that have a dedicated image slot */}
+      {cropSlot ? (
+        <SlotImage
+          content={content}
+          slot={cropSlot}
+          alt=""
+          className="discover-section-photo"
+        />
+      ) : null}
       <div className="discover-card-grid">
         {section.items.map((item, index) => (
           <DiscoverGuideCard

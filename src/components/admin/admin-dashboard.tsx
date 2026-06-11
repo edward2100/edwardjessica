@@ -2730,12 +2730,28 @@ function EventsEditor({
   draft: WeddingContent;
   onDraft: (content: WeddingContent) => void;
 }) {
-  function updateEventMapUrl(key: EventKey, mapUrl: string) {
+  function updateEvent(key: EventKey, patch: Partial<WeddingContent["events"][number]>) {
     onDraft({
       ...draft,
       events: draft.events.map((event) =>
-        event.key === key ? { ...event, mapUrl: mapUrl.trim() || undefined } : event,
+        event.key === key ? { ...event, ...patch } : event,
       ),
+    });
+  }
+
+  function updateEventNote(key: EventKey, lang: "en" | "id", value: string) {
+    onDraft({
+      ...draft,
+      events: draft.events.map((event) => {
+        if (event.key !== key) return event;
+        const note = {
+          en: event.note?.en ?? "",
+          id: event.note?.id ?? "",
+          [lang]: value,
+        };
+        const hasContent = note.en.trim() || note.id.trim();
+        return { ...event, note: hasContent ? note : undefined };
+      }),
     });
   }
 
@@ -2755,10 +2771,11 @@ function EventsEditor({
         <div>
           <p className="eyebrow">Events</p>
           <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
-            Google Maps links
+            Schedule
           </h3>
           <p className="muted" style={{ marginTop: 6 }}>
-            Each event can show a Location button to guests.
+            Edit each event&apos;s time, venue, note, and Location link. Publish to
+            apply changes for guests.
           </p>
         </div>
       </div>
@@ -2769,7 +2786,54 @@ function EventsEditor({
           return (
             <div key={event.key} className="invite-panel">
               <p className="eyebrow">{eventLabels[event.key as EventKey]}</p>
-              <label className="form-field" style={{ marginTop: 8 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 12,
+                  marginTop: 8,
+                }}
+              >
+                <label className="form-field">
+                  <span>Start time</span>
+                  <input
+                    className="input"
+                    type="time"
+                    value={event.startTime}
+                    onChange={(e) => updateEvent(event.key, { startTime: e.target.value })}
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Venue name</span>
+                  <input
+                    className="input"
+                    type="text"
+                    value={event.venueName}
+                    onChange={(e) => updateEvent(event.key, { venueName: e.target.value })}
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Note (English)</span>
+                  <input
+                    className="input"
+                    type="text"
+                    value={event.note?.en || ""}
+                    placeholder="e.g. Dress code: semi formal."
+                    onChange={(e) => updateEventNote(event.key, "en", e.target.value)}
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Note (Indonesian)</span>
+                  <input
+                    className="input"
+                    type="text"
+                    value={event.note?.id || ""}
+                    placeholder="cth. Aturan berpakaian: semi formal."
+                    onChange={(e) => updateEventNote(event.key, "id", e.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="form-field" style={{ marginTop: 12 }}>
                 <span>
                   <MapPin size={13} style={{ display: "inline", marginRight: 4 }} />
                   Google Maps link
@@ -2779,7 +2843,9 @@ function EventsEditor({
                   type="url"
                   value={urlValue}
                   placeholder="https://maps.app.goo.gl/…"
-                  onChange={(e) => updateEventMapUrl(event.key, e.target.value)}
+                  onChange={(e) =>
+                    updateEvent(event.key, { mapUrl: e.target.value.trim() || undefined })
+                  }
                   style={!valid ? { borderColor: "var(--color-error, #c00)" } : undefined}
                 />
               </label>

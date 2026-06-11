@@ -16,7 +16,11 @@ export type InvitationSource = "admin" | "generic";
 
 export type PublicInviteFlow = "generic" | "family" | "overseas";
 
-export type DiscoverMedanSectionId = "localFood" | "supper" | "cafe";
+export type DiscoverMedanSectionId =
+  | "localFood"
+  | "supper"
+  | "cafe"
+  | "placesToVisit";
 
 export type TravelAccommodationOption =
   | "specific_roommates"

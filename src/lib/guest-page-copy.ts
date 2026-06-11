@@ -65,6 +65,10 @@ type DiscoverMedanCopy = {
   cafeTitle: string;
   cafeIntro: string;
   cafeItems: { name: string; note: string }[];
+  placesEyebrow: string;
+  placesTitle: string;
+  placesIntro: string;
+  placesItems: { name: string; note: string }[];
 };
 
 export const travelPageCopy: Record<Language, TravelPageCopy> = {
@@ -189,7 +193,7 @@ export const discoverMedanCopy: Record<Language, DiscoverMedanCopy> = {
   en: {
     kicker: "",
     title: "Discover Medan",
-    subtitle: "A personal food guide from the city that shaped us.",
+    subtitle: "A personal guide from the city that shaped us.",
     viewGuide: "Discover the guide",
     introEyebrow: "Welcome to Medan",
     introTitle: "A city best discovered one bite at a time",
@@ -281,11 +285,41 @@ export const discoverMedanCopy: Record<Language, DiscoverMedanCopy> = {
       { name: "Earth Bake", note: "A gentle bakery moment." },
       { name: "The Thirty Six", note: "A polished place to pause." },
     ],
+    placesEyebrow: "Worth a Trip",
+    placesTitle: "Places to Visit",
+    placesIntro:
+      "A few favourite spots beyond the table — from Medan's heritage to the highlands and Lake Toba.",
+    placesItems: [
+      {
+        name: "Tjong A Fie Mansion",
+        note: "A beautifully preserved 1900s mansion blending Chinese, Malay, and European design — a window into old Medan.",
+      },
+      {
+        name: "Lake Toba (Danau Toba)",
+        note: "The vast volcanic crater lake — the largest in Southeast Asia — with Samosir Island and Batak culture at its heart.",
+      },
+      {
+        name: "Berastagi Highlands",
+        note: "A cool highland town of volcanoes, fruit markets, and mountain views, about two hours from the city.",
+      },
+      {
+        name: "Sipiso-piso Waterfall",
+        note: "One of Indonesia's tallest waterfalls, plunging about 120 metres into a gorge at the northern edge of Lake Toba.",
+      },
+      {
+        name: "Mount Sibayak",
+        note: "An active volcano above Berastagi with a beginner-friendly trail to steaming craters and sunrise views.",
+      },
+      {
+        name: "Lumbini Natural Park",
+        note: "A serene park in Berastagi crowned by a golden replica of Myanmar's Shwedagon Pagoda.",
+      },
+    ],
   },
   id: {
     kicker: "",
     title: "Discover Medan",
-    subtitle: "Panduan kuliner pribadi dari kota yang membentuk cerita kami.",
+    subtitle: "Panduan pribadi dari kota yang membentuk cerita kami.",
     viewGuide: "Temukan panduan",
     introEyebrow: "Selamat datang di Medan",
     introTitle: "Kota yang paling indah dinikmati satu suapan demi satu suapan",
@@ -376,6 +410,36 @@ export const discoverMedanCopy: Record<Language, DiscoverMedanCopy> = {
       { name: "Macehat Coffee", note: "Tempat ngopi dengan karakter lokal." },
       { name: "Earth Bake", note: "Momen bakery yang lembut." },
       { name: "The Thirty Six", note: "Tempat yang rapi untuk singgah sejenak." },
+    ],
+    placesEyebrow: "Layak Dikunjungi",
+    placesTitle: "Tempat untuk Dikunjungi",
+    placesIntro:
+      "Beberapa tempat favorit di luar meja makan — dari warisan kota Medan hingga dataran tinggi dan Danau Toba.",
+    placesItems: [
+      {
+        name: "Tjong A Fie Mansion",
+        note: "Rumah megah awal 1900-an yang memadukan gaya Tionghoa, Melayu, dan Eropa — jendela menuju Medan tempo dulu.",
+      },
+      {
+        name: "Danau Toba",
+        note: "Danau kawah vulkanik terbesar di Asia Tenggara, dengan Pulau Samosir dan budaya Batak di jantungnya.",
+      },
+      {
+        name: "Dataran Tinggi Berastagi",
+        note: "Kota pegunungan yang sejuk dengan gunung berapi, pasar buah, dan pemandangan indah, sekitar dua jam dari kota.",
+      },
+      {
+        name: "Air Terjun Sipiso-piso",
+        note: "Salah satu air terjun tertinggi di Indonesia, jatuh sekitar 120 meter ke jurang di ujung utara Danau Toba.",
+      },
+      {
+        name: "Gunung Sibayak",
+        note: "Gunung berapi aktif di atas Berastagi dengan jalur ramah pemula menuju kawah berasap dan pemandangan matahari terbit.",
+      },
+      {
+        name: "Taman Wisata Lumbini",
+        note: "Taman yang tenang di Berastagi dengan replika emas Pagoda Shwedagon dari Myanmar.",
+      },
     ],
   },
 };
