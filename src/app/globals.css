@@ -255,6 +255,15 @@ textarea {
   transform: translateY(-1px);
 }
 
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.button:disabled:hover {
+  transform: none;
+}
+
 .button-primary {
   background: white;
   color: var(--ink);

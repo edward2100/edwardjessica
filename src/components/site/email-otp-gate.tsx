@@ -171,11 +171,16 @@ export function EmailOtpGate({
         </label>
         <button
           className="button button-muted"
-          disabled={loading === "send"}
+          /* Grey out once sent — the "Resend code" button below handles re-sends. */
+          disabled={sent || loading === "send"}
           type="submit"
           style={{ marginTop: 14 }}
         >
-          {loading === "send" ? c.sendingCode : c.sendCode}
+          {loading === "send"
+            ? c.sendingCode
+            : sent
+              ? c.codeSent
+              : c.sendCode}
         </button>
       </form>
 
