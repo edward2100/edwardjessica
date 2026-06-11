@@ -36,9 +36,10 @@ type SlotImageContent = Pick<
   | "discoverCafeImageUrl"
 >;
 
-const LEGACY_URL_MAP: Record<
-  Exclude<ImageCropSlot, "hero">,
-  keyof SlotImageContent
+// Partial: newer slots (e.g. discoverPlaces) live only in the images map and
+// have no legacy *ImageUrl field.
+const LEGACY_URL_MAP: Partial<
+  Record<Exclude<ImageCropSlot, "hero">, keyof SlotImageContent>
 > = {
   invitation: "invitationImageUrl",
   story: "storyImageUrl",
@@ -58,11 +59,18 @@ function resolveUrl(
   slot: ImageCropSlot,
   preferMobile: boolean,
 ): string {
+  const legacyKey =
+    slot !== "hero"
+      ? LEGACY_URL_MAP[slot as Exclude<ImageCropSlot, "hero">]
+      : undefined;
+  const legacyUrl =
+    slot === "hero"
+      ? content.heroImageUrl
+      : legacyKey
+        ? (content[legacyKey] as string | undefined)
+        : undefined;
   const desktopUrl =
-    (content.images?.[slot] as string | undefined) ||
-    (slot !== "hero"
-      ? (content[LEGACY_URL_MAP[slot as Exclude<ImageCropSlot, "hero">]] as string)
-      : content.heroImageUrl);
+    (content.images?.[slot] as string | undefined) || legacyUrl || "";
   const mobileUrl =
     (content.mobileImages?.[slot] as string | undefined) || desktopUrl;
 
@@ -98,6 +106,10 @@ export function SlotImage({
   // Mobile URL (mobileImages[slot] ?? desktop URL)
   const mobileSrc = resolveUrl(content, slot, true);
   const hasSeparateMobile = mobileSrc !== desktopSrc;
+
+  // No image set for this slot (e.g. an optional section photo not yet
+  // uploaded) — render nothing rather than a broken <Image>.
+  if (!desktopSrc) return null;
 
   // Full-bleed hero slots fill their section (caller-controlled); every other
   // slot is wrapped in an aspect-ratio frame.

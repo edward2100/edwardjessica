@@ -2247,7 +2247,8 @@ export async function setDraftImageSlot(
     | "discoverIntro"
     | "discoverFood"
     | "discoverSupper"
-    | "discoverCafe",
+    | "discoverCafe"
+    | "discoverPlaces",
   url: string,
 ) {
   const content = await getDraftContent();

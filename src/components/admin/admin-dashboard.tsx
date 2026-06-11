@@ -81,6 +81,7 @@ type ImageSlot =
   | "discoverFood"
   | "discoverSupper"
   | "discoverCafe"
+  | "discoverPlaces"
   | "ogImage";
 
 const tabs: { id: Tab; label: string; icon: ElementType }[] = [
@@ -113,6 +114,7 @@ const imageSlotLabels: Record<ImageSlot, string> = {
   discoverFood: "Local Food",
   discoverSupper: "Snacks & Supper",
   discoverCafe: "Cafes",
+  discoverPlaces: "Places to Visit",
   ogImage: "Link Preview (WhatsApp/OG)",
 };
 
@@ -210,12 +212,12 @@ async function compressImageInBrowser(
   if (!context) throw new Error("Unable to optimize this image.");
   context.drawImage(image, 0, 0, width, height);
 
-  // Higher starting quality so the browser pre-pass barely compresses; the
-  // server (sharp) does the final encode. Falls to lower steps only if the
-  // file would exceed the upload limit. Reduces double-compression artifacts.
+  // Near-lossless browser pre-pass so the server (sharp q95) does the real
+  // encode without compounding compression. Falls to lower steps only if the
+  // file would exceed the upload limit.
   const qualities = kind === "hero" || slot === "hero"
-    ? [0.92, 0.85, 0.76]
-    : [0.9, 0.82, 0.74];
+    ? [0.95, 0.9, 0.82]
+    : [0.95, 0.88, 0.8];
 
   // Try WebP first (smaller files); fall back to JPEG which is universally supported.
   let bestBlob: Blob | null = null;
@@ -2136,6 +2138,18 @@ function MediaView({
             slot="discoverCafe"
             uploading={uploading}
           />
+          <SitePhotoSlot
+            content={content}
+            description="Image used in the Places to Visit section."
+            label={imageSlotLabels.discoverPlaces}
+            onCropChange={(crop) => saveCrop("discoverPlaces", crop)}
+            onFrameChange={(ratio) => saveFrame("discoverPlaces", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "discoverPlaces", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "discoverPlaces", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("discoverPlaces")}
+            slot="discoverPlaces"
+            uploading={uploading}
+          />
         </div>
       </div>
 
@@ -2704,8 +2718,11 @@ function SitePhotoSlot({
   );
 }
 
-/** Resolve the legacy *ImageUrl field for a given slot. */
+/** Resolve the current desktop image URL for a slot (images map first, then
+ *  the legacy *ImageUrl field; "" when a slot has neither — e.g. discoverPlaces). */
 function contentLegacyUrl(content: WeddingContent, slot: ImageCropSlot): string {
+  const fromImages = content.images?.[slot];
+  if (fromImages) return fromImages;
   switch (slot) {
     case "hero": return content.heroImageUrl;
     case "invitation": return content.invitationImageUrl;
@@ -2719,6 +2736,7 @@ function contentLegacyUrl(content: WeddingContent, slot: ImageCropSlot): string 
     case "discoverFood": return content.discoverFoodImageUrl;
     case "discoverSupper": return content.discoverSupperImageUrl;
     case "discoverCafe": return content.discoverCafeImageUrl;
+    default: return "";
   }
 }
 

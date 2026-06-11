@@ -35,6 +35,7 @@ const imageSlots = [
   "discoverFood",
   "discoverSupper",
   "discoverCafe",
+  "discoverPlaces",
 ] as const;
 type ImageSlot = (typeof imageSlots)[number];
 const validFrameRatios: ImageFrameRatio[] = ["square", "portrait", "landscape"];

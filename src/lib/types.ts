@@ -133,7 +133,8 @@ export type ImageCropSlot =
   | "discoverIntro"
   | "discoverFood"
   | "discoverSupper"
-  | "discoverCafe";
+  | "discoverCafe"
+  | "discoverPlaces";
 
 export type ImageFrameRatio = "square" | "portrait" | "landscape";
 

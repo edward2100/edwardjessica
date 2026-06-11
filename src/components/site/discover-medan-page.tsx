@@ -125,7 +125,7 @@ function sectionImageCropSlot(
   if (sectionId === "localFood") return "discoverFood";
   if (sectionId === "supper") return "discoverSupper";
   if (sectionId === "cafe") return "discoverCafe";
-  return null; // placesToVisit has no dedicated section photo
+  return "discoverPlaces";
 }
 
 function GuideSection({

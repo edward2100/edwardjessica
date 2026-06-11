@@ -23,6 +23,7 @@ export const imageCropSlots: ImageCropSlot[] = [
   "discoverFood",
   "discoverSupper",
   "discoverCafe",
+  "discoverPlaces",
 ];
 
 function clampPercent(value: unknown, fallback: number) {
@@ -105,6 +106,7 @@ const SLOT_FRAME_DEFAULTS: Partial<Record<ImageCropSlot, ImageFrameRatio>> = {
   discoverFood: "landscape",
   discoverSupper: "landscape",
   discoverCafe: "landscape",
+  discoverPlaces: "landscape",
 };
 
 /**
