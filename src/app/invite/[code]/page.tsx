@@ -7,6 +7,7 @@ import {
   recordInviteOpen,
 } from "@/lib/data-store";
 import { findPublicInviteTypeByCode, normalizeInviteCode } from "@/lib/rsvp";
+import type { InvitationGroup } from "@/lib/types";
 
 export default async function Page({
   params,
@@ -29,5 +30,24 @@ export default async function Page({
   if (!invitation) notFound();
   await recordInviteOpen(normalizedCode);
 
-  return <InvitePage content={content} invitation={invitation} />;
+  // E1-7: strip PII fields before serialising the invitation into the client component props.
+  // email, phone, and privateNotes must not appear in the server-rendered HTML.
+  // The OTP gate loses the email pre-fill — acceptable given the PII exposure risk.
+  const safeInvitation: InvitationGroup = {
+    id: invitation.id,
+    code: invitation.code,
+    greeting: invitation.greeting,
+    groupName: invitation.groupName,
+    maxGuests: invitation.maxGuests,
+    side: invitation.side,
+    source: invitation.source,
+    flow: invitation.flow,
+    eligibleEvents: invitation.eligibleEvents,
+    openedAt: invitation.openedAt,
+    rsvp: invitation.rsvp,
+    guests: invitation.guests,
+    // email, phone, and privateNotes intentionally omitted
+  };
+
+  return <InvitePage content={content} invitation={safeInvitation} />;
 }

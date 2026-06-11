@@ -112,6 +112,10 @@ export const copy = {
   id: {
     weddingOf: "Pernikahan",
     genericInviteGreeting: "Untuk keluarga & sahabat dari",
+    // G7: letsBegin and openInvite were missing from the ID key set — added below.
+    // These translations should be reviewed by Edward/Jessica for tone.
+    letsBegin: "Mari Mulai",
+    openInvite: "Buka Undangan",
     enterCode: "Masukkan kode undangan",
     openInvitation: "Buka Undangan",
     details: "Undangan Kami",

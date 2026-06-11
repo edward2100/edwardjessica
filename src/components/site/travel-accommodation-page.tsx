@@ -3,6 +3,7 @@
 import { CheckCircle2, LockKeyhole, Send } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import type { CSSProperties } from "react";
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -20,6 +21,7 @@ import {
 } from "@/lib/guest-navigation";
 import { travelPageCopy } from "@/lib/guest-page-copy";
 import { imageCropStyleVars } from "@/lib/image-crop";
+import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import type {
   InvitationGroup,
   Language,
@@ -37,39 +39,86 @@ export function TravelAccommodationPage({
   flow,
   invitation,
   requestedCode,
+  codeFoundButWrongFlow,
 }: {
   content: WeddingContent;
   flow: PublicInviteFlow;
   invitation?: InvitationGroup | null;
   requestedCode?: string;
+  /** E2-5: true when code is valid but the guest's invitation is not an
+   *  overseas/family flow — show a "not applicable" notice instead of the form. */
+  codeFoundButWrongFlow?: boolean;
 }) {
-  const [language, setLanguage] = useState<Language>(content.defaultLanguage);
+  // E2-9: initialise language from localStorage; guard for SSR with typeof-window check.
+  const [language, setLanguage] = useState<Language>(() => {
+    if (typeof window === "undefined") return content.defaultLanguage;
+    return getStoredLanguage() ?? content.defaultLanguage;
+  });
+  const router = useRouter();
   const music = useBackgroundMusic();
   const detailsRef = useRef<HTMLElement | null>(null);
   const c = travelPageCopy[language];
+  // E2-5: when wrong-flow, use the invitation's code/flow for nav links but
+  // treat the page as non-travel so the form stays locked.
   const activeFlow = invitation?.flow || flow;
-  const isTravelFlow = activeFlow === "overseas" || activeFlow === "family";
+  const isTravelFlow =
+    !codeFoundButWrongFlow &&
+    (activeFlow === "overseas" || activeFlow === "family");
   const activeInvitationHref = invitationHref(invitation?.code, activeFlow);
   const activeTravelHref = travelAccommodationHref(invitation?.code, activeFlow);
   const activeDiscoverHref = discoverMedanHref(invitation?.code, activeFlow);
   const canSubmitTravel =
     isTravelFlow && invitation?.rsvp.status === "attending";
-  const showInvalidCode = Boolean(requestedCode && !invitation);
+  // E2-5: show "not applicable" notice when code found but wrong flow;
+  // show "invalid code" only for genuinely unknown codes.
+  const showNotApplicable = Boolean(codeFoundButWrongFlow);
+  const showInvalidCode = Boolean(requestedCode && !invitation && !codeFoundButWrongFlow);
+
+  function handleLanguageChange(lang: Language) {
+    setLanguage(lang);
+    storeLanguage(lang);
+  }
 
   useEffect(() => {
     if (invitation && isTravelFlow) {
       window.localStorage.setItem(inviteSessionKey(invitation.flow), invitation.code);
       return;
     }
+    // E2-1: clear the stored code when the page resolved it as invalid.
+    if (requestedCode && !invitation) {
+      window.localStorage.removeItem(inviteSessionKey(activeFlow));
+      return;
+    }
     if (!requestedCode) {
       const storedCode = window.localStorage.getItem(inviteSessionKey(activeFlow));
       if (storedCode) {
-        window.location.replace(
-          `/travel-accommodation?code=${encodeURIComponent(storedCode)}`,
-        );
+        // E2-1: validate the stored code via the resolve endpoint before
+        // redirecting, to avoid an infinite redirect loop on a stale code.
+        // E2-2: use router.replace (client navigation) so the music provider
+        // is preserved across the navigation.
+        void fetch(
+          `/api/guest-auth/resolve-invite?flow=${encodeURIComponent(activeFlow)}`,
+        )
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data: { invitation?: { code?: string } } | null) => {
+            const resolvedCode = data?.invitation?.code;
+            if (resolvedCode === storedCode) {
+              // Stored code matches the verified session — safe to redirect.
+              router.replace(
+                `/travel-accommodation?code=${encodeURIComponent(storedCode)}`,
+              );
+            } else {
+              // Session does not match or no session: stale stored code — remove it.
+              window.localStorage.removeItem(inviteSessionKey(activeFlow));
+            }
+          })
+          .catch(() => {
+            // Network error: remove stale code to avoid a redirect loop.
+            window.localStorage.removeItem(inviteSessionKey(activeFlow));
+          });
       }
     }
-  }, [activeFlow, invitation, isTravelFlow, requestedCode]);
+  }, [activeFlow, invitation, isTravelFlow, requestedCode, router]);
 
   function scrollToDetails() {
     music.play();
@@ -102,7 +151,7 @@ export function TravelAccommodationPage({
         />
         <div className="hero-content travel-hero-content">
           <div className="travel-hero-inner">
-            <LanguageToggle language={language} onChange={setLanguage} />
+            <LanguageToggle language={language} onChange={handleLanguageChange} />
             {c.heroKicker ? (
               <p className="hero-kicker" style={{ marginTop: 34 }}>
                 {c.heroKicker}
@@ -128,6 +177,15 @@ export function TravelAccommodationPage({
         <div className="container travel-section-stack">
           {showInvalidCode ? (
             <p className="travel-notice">{c.invalidCode}</p>
+          ) : null}
+          {/* E2-5: generic-flow guests have a valid invitation but this page
+              does not apply to them — greet them but explain the situation. */}
+          {showNotApplicable ? (
+            <p className="travel-notice">
+              {language === "id"
+                ? "Halaman ini khusus untuk tamu dari luar kota. Undangan Anda tidak memerlukan rencana perjalanan dan akomodasi."
+                : "This page is for out-of-town guests. Your invitation does not include travel plans and accommodation."}
+            </p>
           ) : null}
           <article className="travel-detail-section">
             <h2 className="title serif">{c.travelTitle}</h2>
@@ -266,34 +324,49 @@ function TravelPlansForm({
     useState<TravelAccommodationOption>("assign_roommates");
   const [preferredRoommates, setPreferredRoommates] = useState("");
   const [notice, setNotice] = useState("");
+  const [emailWarning, setEmailWarning] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmitTravel || !invitationCode) return;
     setNotice("");
+    setEmailWarning(false);
     setLoading(true);
-    const response = await fetch("/api/travel-plans", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        code: invitationCode,
-        arrivalAt: toJakartaIso(arrivalAt),
-        departureAt: toJakartaIso(departureAt),
-        accommodationOption: isFamilyFlow ? "assign_roommates" : accommodationOption,
-        preferredRoommates:
-          !isFamilyFlow && accommodationOption === "specific_roommates"
-            ? preferredRoommates
-            : "",
-      }),
-    });
-    const json = (await response.json()) as { error?: string };
-    setLoading(false);
-    if (!response.ok) {
-      setNotice(language === "id" ? c.unable : json.error || c.unable);
-      return;
+    // E2-9: wrap fetch in try/catch so a network error clears the loading state.
+    try {
+      const response = await fetch("/api/travel-plans", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code: invitationCode,
+          arrivalAt: toJakartaIso(arrivalAt),
+          departureAt: toJakartaIso(departureAt),
+          accommodationOption: isFamilyFlow ? "assign_roommates" : accommodationOption,
+          preferredRoommates:
+            !isFamilyFlow && accommodationOption === "specific_roommates"
+              ? preferredRoommates
+              : "",
+        }),
+      });
+      const json = (await response.json()) as {
+        error?: string;
+        emailStatus?: "sent" | "failed" | "skipped";
+      };
+      setLoading(false);
+      if (!response.ok) {
+        setNotice(language === "id" ? c.unable : json.error || c.unable);
+        return;
+      }
+      setNotice(c.saved);
+      // E2-9 / shared contract: surface email delivery status.
+      if (json.emailStatus === "failed" || json.emailStatus === "skipped") {
+        setEmailWarning(true);
+      }
+    } catch {
+      setLoading(false);
+      setNotice(c.unable);
     }
-    setNotice(c.saved);
   }
 
   return (
@@ -419,6 +492,14 @@ function TravelPlansForm({
             />
           ) : null}
           {notice}
+        </p>
+      ) : null}
+      {/* E2-9 / shared contract: email delivery warning */}
+      {emailWarning ? (
+        <p className="muted" style={{ marginTop: 8 }}>
+          {language === "id"
+            ? "Kami tidak dapat mengirim email konfirmasi — mohon simpan tautan halaman ini."
+            : "We could not send your confirmation email — please save this page link."}
         </p>
       ) : null}
 

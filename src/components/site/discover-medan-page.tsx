@@ -15,6 +15,7 @@ import {
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
 import { imageCropStyleVars } from "@/lib/image-crop";
+import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import type {
   DiscoverMedanGuideItem,
   DiscoverMedanGuideSection,
@@ -35,7 +36,11 @@ export function DiscoverMedanPage({
   flow: PublicInviteFlow;
   invitation?: InvitationGroup | null;
 }) {
-  const [language, setLanguage] = useState<Language>(content.defaultLanguage);
+  // E2-9: initialise language from localStorage; guard for SSR with typeof-window check.
+  const [language, setLanguage] = useState<Language>(() => {
+    if (typeof window === "undefined") return content.defaultLanguage;
+    return getStoredLanguage() ?? content.defaultLanguage;
+  });
   const music = useBackgroundMusic();
   const guideRef = useRef<HTMLElement | null>(null);
   const c = content.discoverMedan;
@@ -69,7 +74,13 @@ export function DiscoverMedanPage({
         />
         <div className="hero-content travel-hero-content">
           <div className="travel-hero-inner">
-            <LanguageToggle language={language} onChange={setLanguage} />
+            <LanguageToggle
+              language={language}
+              onChange={(lang) => {
+                setLanguage(lang);
+                storeLanguage(lang);
+              }}
+            />
             {c.heroKicker[language] ? (
               <p className="hero-kicker" style={{ marginTop: 34 }}>
                 {c.heroKicker[language]}

@@ -10,8 +10,10 @@ import {
   isGenericInviteCode,
   isRsvpClosed,
   normalizeInviteCode,
+  normalizePhoneNumber,
   validateInviteCode,
   validateSelfRegistrationForInviteType,
+  validateTravelPlanSubmission,
 } from "@/lib/rsvp";
 import { buildRsvpConfirmationEmail } from "@/lib/rsvp-confirmation-email";
 import { weddingContent } from "@/lib/wedding-content";
@@ -154,6 +156,170 @@ describe("RSVP helpers", () => {
     );
     expect(calendar).toContain("SUMMARY:Edward & Jessica - Dinner Reception");
     expect(calendar).toContain("DTSTART;TZID=Asia/Jakarta:20261212T093000");
+  });
+
+  // C1: travel plan date validation
+  describe("validateTravelPlanSubmission — travel date validation (C1)", () => {
+    const validBase = {
+      code: "JESSMARRIED",
+      accommodationOption: "own_accommodation" as const,
+    };
+
+    it("accepts dates within the sanity window", () => {
+      expect(() =>
+        validateTravelPlanSubmission({
+          ...validBase,
+          arrivalAt: "2026-12-10T10:00:00Z",
+          departureAt: "2026-12-14T10:00:00Z",
+        }),
+      ).not.toThrow();
+    });
+
+    it("rejects arrivalAt before the travel window", () => {
+      const result = validateTravelPlanSubmission.bind(null, {
+        ...validBase,
+        arrivalAt: "2026-10-01T00:00:00Z",
+        departureAt: "2026-12-14T00:00:00Z",
+      });
+      expect(result).toThrow();
+    });
+
+    it("rejects departureAt after the travel window", () => {
+      const result = validateTravelPlanSubmission.bind(null, {
+        ...validBase,
+        arrivalAt: "2026-12-10T00:00:00Z",
+        departureAt: "2027-02-01T00:00:00Z",
+      });
+      expect(result).toThrow();
+    });
+
+    it("rejects departure before arrival", () => {
+      let errorMessages: string[] = [];
+      try {
+        validateTravelPlanSubmission({
+          ...validBase,
+          arrivalAt: "2026-12-14T10:00:00Z",
+          departureAt: "2026-12-10T10:00:00Z",
+        });
+      } catch (e: unknown) {
+        // Zod v4 uses .issues; v3 used .errors — check both for compatibility.
+        const issues =
+          e && typeof e === "object" && "issues" in e
+            ? (e as { issues: Array<{ message: string }> }).issues
+            : e && typeof e === "object" && "errors" in e
+              ? (e as { errors: Array<{ message: string }> }).errors
+              : null;
+        if (Array.isArray(issues)) {
+          errorMessages = issues.map((err) => err.message);
+        }
+      }
+      expect(errorMessages.some((m) => m.includes("Departure must be after arrival"))).toBe(true);
+    });
+
+    it("accepts same arrival and departure time (edge: instant stay)", () => {
+      expect(() =>
+        validateTravelPlanSubmission({
+          ...validBase,
+          arrivalAt: "2026-12-12T12:00:00Z",
+          departureAt: "2026-12-12T12:00:00Z",
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  // C2: midnight wrap in calendar date computation
+  it("advances end date by one day when event end crosses midnight (C2)", () => {
+    const content = {
+      ...weddingContent,
+      events: [
+        {
+          ...weddingContent.events[0],
+          date: "2026-12-12",
+          startTime: "23:00",
+          endTime: "01:00", // next day
+        },
+      ],
+    };
+    const ics = buildWeddingCalendarIcs(content, new Date("2026-01-01T00:00:00.000Z"));
+    // DTEND should be on the 13th, not the 12th
+    expect(ics).toContain("DTEND;TZID=Asia/Jakarta:20261213T010000");
+  });
+
+  it("advances end date when addOneHour wraps past midnight (C2)", () => {
+    const content = {
+      ...weddingContent,
+      events: [
+        {
+          ...weddingContent.events[0],
+          date: "2026-12-12",
+          startTime: "23:30",
+          endTime: undefined, // relies on +1 hour default
+        },
+      ],
+    };
+    const ics = buildWeddingCalendarIcs(content, new Date("2026-01-01T00:00:00.000Z"));
+    expect(ics).toContain("DTEND;TZID=Asia/Jakarta:20261213T003000");
+  });
+
+  // C3: ICS folding at 74 octets, multi-byte safe
+  it("folds ICS lines at 74 octets without splitting multi-byte chars (C3)", () => {
+    // Build a calendar with a long description full of multi-byte characters.
+    // Each Japanese character is 3 UTF-8 bytes.
+    const longNote = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほ"; // 30 × 3 = 90 bytes
+    const content = {
+      ...weddingContent,
+      events: [
+        {
+          ...weddingContent.events[0],
+          note: { en: longNote, id: longNote },
+        },
+      ],
+    };
+    const ics = buildWeddingCalendarIcs(content, new Date("2026-01-01T00:00:00.000Z"));
+    const encoder = new TextEncoder();
+    for (const line of ics.split("\r\n")) {
+      expect(encoder.encode(line).length).toBeLessThanOrEqual(75); // 74 content + possibly SPACE prefix
+    }
+    // Ensure the content is present (not truncated)
+    expect(ics).toContain("あ");
+  });
+
+  // C4: VTIMEZONE block present
+  it("includes a VTIMEZONE block for Asia/Jakarta (C4)", () => {
+    const ics = buildWeddingCalendarIcs(
+      weddingContent,
+      new Date("2026-01-01T00:00:00.000Z"),
+    );
+    expect(ics).toContain("BEGIN:VTIMEZONE");
+    expect(ics).toContain("TZID:Asia/Jakarta");
+    expect(ics).toContain("TZOFFSETTO:+0700");
+    expect(ics).toContain("END:VTIMEZONE");
+    // VTIMEZONE must appear before any VEVENT
+    const tzPos = ics.indexOf("BEGIN:VTIMEZONE");
+    const veventPos = ics.indexOf("BEGIN:VEVENT");
+    expect(tzPos).toBeLessThan(veventPos);
+  });
+
+  // C5: normalizePhoneNumber validation
+  describe("normalizePhoneNumber — garbage rejection (C5)", () => {
+    it("returns a normalized phone number for valid input", () => {
+      expect(normalizePhoneNumber("+62", "81234567890")).toBe("+62 81234567890");
+      expect(normalizePhoneNumber("62", "81234567890")).toBe("+62 81234567890");
+      // Leading zeros stripped from local number
+      expect(normalizePhoneNumber("+62", "081234567890")).toBe("+62 81234567890");
+    });
+
+    it("throws when country code has no digits", () => {
+      expect(() => normalizePhoneNumber("", "81234567890")).toThrow();
+      expect(() => normalizePhoneNumber("+", "81234567890")).toThrow();
+      expect(() => normalizePhoneNumber("abc", "81234567890")).toThrow();
+    });
+
+    it("throws when local number is empty after cleaning", () => {
+      expect(() => normalizePhoneNumber("+62", "")).toThrow();
+      expect(() => normalizePhoneNumber("+62", "abc")).toThrow();
+      expect(() => normalizePhoneNumber("+62", "000")).toThrow(); // all zeros stripped
+    });
   });
 
   it("builds RSVP confirmation email content with personal invite link", () => {

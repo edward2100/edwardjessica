@@ -29,6 +29,7 @@ import {
 } from "@/lib/guest-navigation";
 import { imageCropStyleVars } from "@/lib/image-crop";
 import { copy, text } from "@/lib/i18n";
+import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import { isRsvpClosed, mealPreferences, normalizeInviteCode } from "@/lib/rsvp";
 import type {
   EventKey,
@@ -46,11 +47,18 @@ export function InvitePage({
   content: WeddingContent;
   invitation: InvitationGroup;
 }) {
-  const [language, setLanguage] = useState<Language>(content.defaultLanguage);
+  // E1-2: initialize from localStorage; useState initializer runs client-side only (this is a "use client" component)
+  const [language, setLanguage] = useState<Language>(
+    () => getStoredLanguage() ?? content.defaultLanguage,
+  );
   const [currentInvitation, setCurrentInvitation] = useState(invitation);
   const [hasOpenedInvitation, setHasOpenedInvitation] = useState(false);
   const [showRsvpForm, setShowRsvpForm] = useState(false);
   const [verifiedEmail, setVerifiedEmail] = useState("");
+  // E1-6: track email delivery status from API response
+  const [emailStatus, setEmailStatus] = useState<
+    "sent" | "failed" | "skipped" | null
+  >(null);
   const music = useBackgroundMusic();
   const detailsRef = useRef<HTMLElement | null>(null);
   const c = copy[language];
@@ -84,6 +92,12 @@ export function InvitePage({
   ]
     .filter(Boolean)
     .join(" · ");
+
+  // E1-2: persist language on toggle
+  function handleLanguageChange(lang: Language) {
+    setLanguage(lang);
+    storeLanguage(lang);
+  }
 
   function begin() {
     setHasOpenedInvitation(true);
@@ -154,7 +168,7 @@ export function InvitePage({
         />
         <div className="hero-content">
           <div>
-            <LanguageToggle language={language} onChange={setLanguage} />
+            <LanguageToggle language={language} onChange={handleLanguageChange} />
             <p className="hero-kicker" style={{ marginTop: 34 }}>
               {currentInvitation.greeting}
             </p>
@@ -302,6 +316,15 @@ export function InvitePage({
             </div>
           </div>
 
+          {/* E1-6: email confirmation notice when email could not be sent */}
+          {emailStatus && emailStatus !== "sent" ? (
+            <p className="muted" style={{ marginTop: 14 }}>
+              {language === "id"
+                ? "Kami tidak dapat mengirim email konfirmasi — mohon simpan tautan halaman ini."
+                : "We could not send your confirmation email — please save this page link."}
+            </p>
+          ) : null}
+
           {showRsvpForm ? (
             <div id="rsvp-form" className="rsvp-grid" style={{ marginTop: 24 }}>
               <div>
@@ -321,6 +344,7 @@ export function InvitePage({
                   content={content}
                   invitation={currentInvitation}
                   language={language}
+                  onEmailStatus={setEmailStatus}
                   onSaved={setCurrentInvitation}
                 />
               ) : (
@@ -343,11 +367,13 @@ function RsvpForm({
   content,
   invitation,
   language,
+  onEmailStatus,
   onSaved,
 }: {
   content: WeddingContent;
   invitation: InvitationGroup;
   language: Language;
+  onEmailStatus: (status: "sent" | "failed" | "skipped") => void;
   onSaved: (invitation: InvitationGroup) => void;
 }) {
   const c = copy[language];
@@ -372,16 +398,27 @@ function RsvpForm({
       ]),
     ),
   );
+  // E1-5: separate primary guest from additional guests so re-submissions include existing IDs.
+  // The first guest in the list is the primary; any beyond that are "additional".
+  const existingAdditional = invitation.guests.slice(1);
   const maxAdditionalGuests = Math.max(
     0,
     invitation.maxGuests - invitation.guests.length,
   );
-  const [additionalGuests, setAdditionalGuests] = useState(
-    Array.from({ length: maxAdditionalGuests }, () => ({
+  const [additionalGuests, setAdditionalGuests] = useState(() => [
+    // Pre-populate existing additional guests with their ids so the server can update rather than insert
+    ...existingAdditional.map((guest) => ({
+      id: guest.id,
+      name: guest.name,
+      mealPreference: guest.mealPreference as MealPreference,
+    })),
+    // Blank slots for any remaining capacity
+    ...Array.from({ length: maxAdditionalGuests }, () => ({
+      id: undefined as string | undefined,
       name: "",
       mealPreference: "non_vegetarian" as MealPreference,
     })),
-  );
+  ]);
   const [message, setMessage] = useState(invitation.rsvp.message || "");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -393,46 +430,63 @@ function RsvpForm({
     invitation.eligibleEvents.includes(eventItem.key),
   );
 
+  // E1-1: wrapped in try/catch to prevent UI freeze on network failure
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (closed) return;
     setLoading(true);
     setNotice("");
-    const response = await fetch("/api/rsvp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        code: normalizeInviteCode(invitation.code),
-        status,
-        eventAttendance: status === "declined" ? {} : eventAttendance,
-        mealPreferences: mealPrefs,
-        additionalGuests:
-          status === "declined"
-            ? []
-            : additionalGuests
-                .map((guest) => ({
-                  name: guest.name.trim(),
-                  mealPreference: guest.mealPreference,
-                }))
-                .filter((guest) => guest.name),
-        message,
-      }),
-    });
-    const json = (await response.json()) as {
-      invitation?: InvitationGroup;
-      error?: string;
-    };
-    setLoading(false);
-    if (!response.ok || !json.invitation) {
+    try {
+      const response = await fetch("/api/rsvp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code: normalizeInviteCode(invitation.code),
+          status,
+          eventAttendance: status === "declined" ? {} : eventAttendance,
+          mealPreferences: mealPrefs,
+          // E1-5: include id on existing additional guests so the server dedupes by id (pairs with B9)
+          additionalGuests:
+            status === "declined"
+              ? []
+              : additionalGuests
+                  .map((guest) => ({
+                    ...(guest.id ? { id: guest.id } : {}),
+                    name: guest.name.trim(),
+                    mealPreference: guest.mealPreference,
+                  }))
+                  .filter((guest) => guest.name),
+          message,
+        }),
+      });
+      const json = (await response.json()) as {
+        invitation?: InvitationGroup;
+        error?: string;
+        emailStatus?: "sent" | "failed" | "skipped";
+      };
+      setLoading(false);
+      if (!response.ok || !json.invitation) {
+        setNotice(
+          language === "id"
+            ? c.unableToSaveRsvp
+            : json.error || c.unableToSaveRsvp,
+        );
+        return;
+      }
+      // E1-6: surface email delivery status to parent
+      if (json.emailStatus) {
+        onEmailStatus(json.emailStatus);
+      }
+      onSaved(json.invitation);
+      setNotice(c.thanks);
+    } catch {
+      setLoading(false);
       setNotice(
         language === "id"
-          ? c.unableToSaveRsvp
-          : json.error || c.unableToSaveRsvp,
+          ? "Terjadi kesalahan jaringan. Mohon coba lagi."
+          : "A network error occurred. Please try again.",
       );
-      return;
     }
-    onSaved(json.invitation);
-    setNotice(c.thanks);
   }
 
   return (

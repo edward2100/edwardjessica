@@ -30,12 +30,12 @@ values (
       "id": "Dengan hati penuh sukacita, kami memulai babak baru dan berbahagia dapat berbagi hari ini bersama Anda."
     },
     "loveStory": {
-      "en": "We met in university in 2018, became close friends, and started dating a year later.",
-      "id": "Kami bertemu di universitas pada tahun 2018, menjadi sahabat dekat, lalu mulai menjalin hubungan setahun kemudian."
+      "en": "We first noticed each other in junior high in 2011, became close friends through little conversations, and got together in 2014.",
+      "id": "Kami pertama kali saling memperhatikan saat SMP pada tahun 2011, menjadi sahabat dekat melalui obrolan-obrolan kecil, lalu mulai bersama pada tahun 2014."
     },
     "proposalStory": {
-      "en": "Edward proposed during a family trip to Bali in 2025.",
-      "id": "Edward melamar Jessica saat perjalanan keluarga ke Bali pada tahun 2025."
+      "en": "What began as shy glances and years of friendship now brings us to our wedding day.",
+      "id": "Kisah yang berawal dari tatapan malu-malu dan persahabatan panjang kini membawa kami ke hari pernikahan."
     },
     "coupleBio": {
       "en": "Edward is calm and thoughtful; Jessica is warm and full of joy.",

@@ -11,7 +11,7 @@ export default async function Page({
 }) {
   const params = await searchParams;
   const content = await getPublishedContent();
-  const { invitation, normalizedCode, requestedFlow } =
+  const { invitation, normalizedCode, requestedFlow, codeFoundButWrongFlow } =
     await resolveGuestFlowContext(params, { expandedOnly: true });
 
   return (
@@ -20,6 +20,7 @@ export default async function Page({
       flow={requestedFlow}
       invitation={invitation}
       requestedCode={normalizedCode || undefined}
+      codeFoundButWrongFlow={codeFoundButWrongFlow}
     />
   );
 }

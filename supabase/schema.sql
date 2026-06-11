@@ -62,7 +62,8 @@ create table if not exists invitation_groups (
   source text not null default 'admin' check (source in ('admin', 'generic')),
   flow text not null default 'generic' check (flow in ('generic', 'overseas', 'family')),
   private_notes jsonb,
-  eligible_events text[] not null default array['dinner'],
+  -- G2: generic/public guests are eligible for all three events by default
+  eligible_events text[] not null default array['holy_matrimony','tea_lunch','dinner'],
   opened_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -218,6 +219,9 @@ on travel_plans for all
 using (is_admin())
 with check (is_admin());
 
+-- G3: strip PII (email, phone, private_notes) — these are server-side-only fields.
+-- The application reads invitation_groups directly with the service role key;
+-- this RPC is the public-facing surface and must not leak PII.
 create or replace function public.get_invitation_by_code(invite_code text)
 returns jsonb
 language plpgsql
@@ -228,7 +232,21 @@ declare
   result jsonb;
 begin
   select jsonb_build_object(
-    'group', to_jsonb(ig),
+    'group', jsonb_build_object(
+      'id',              ig.id,
+      'code',            ig.code,
+      'greeting',        ig.greeting,
+      'group_name',      ig.group_name,
+      'max_guests',      ig.max_guests,
+      'side',            ig.side,
+      'source',          ig.source,
+      'flow',            ig.flow,
+      'eligible_events', ig.eligible_events,
+      'opened_at',       ig.opened_at,
+      'created_at',      ig.created_at,
+      'updated_at',      ig.updated_at
+      -- email, phone, private_notes intentionally omitted
+    ),
     'guests', coalesce(jsonb_agg(distinct to_jsonb(g)) filter (where g.id is not null), '[]'::jsonb),
     'rsvp', to_jsonb(r)
   )
@@ -242,6 +260,47 @@ begin
   return result;
 end;
 $$;
+
+-- G1: admin_message_logs — must match migrations/20260610_add_admin_message_logs.sql
+-- so that fresh installs via schema.sql get this table without running incremental migrations.
+create table if not exists admin_message_logs (
+  id uuid primary key default gen_random_uuid(),
+  invitation_group_id uuid not null references invitation_groups(id) on delete cascade,
+  channel text not null check (channel in ('whatsapp')),
+  message_type text not null check (message_type in ('invitation', 'rsvp_confirmation', 'travel_plans')),
+  recipient text,
+  message_preview text,
+  sent_at timestamptz not null default now(),
+  sent_by text
+);
+
+alter table admin_message_logs enable row level security;
+
+drop policy if exists "admin manage message logs" on admin_message_logs;
+create policy "admin manage message logs"
+on admin_message_logs for all
+using (is_admin())
+with check (is_admin());
+
+-- G5: performance indexes for hot query paths
+create index if not exists admin_message_logs_invitation_group_id_idx
+  on admin_message_logs(invitation_group_id);
+
+create index if not exists admin_message_logs_message_type_idx
+  on admin_message_logs(message_type);
+
+-- G5: content_versions — status + updated_at for the published-content query
+-- (content_versions has no created_at; updated_at is the recency column)
+create index if not exists content_versions_status_updated_at_idx
+  on content_versions (status, updated_at desc nulls last);
+
+-- G5: invite_open_events — fast lookup by group (used for open-count stat)
+create index if not exists invite_open_events_invitation_group_id_idx
+  on invite_open_events (invitation_group_id);
+
+-- G5: rsvps — fast lookup by group
+create index if not exists rsvps_invitation_group_id_idx
+  on rsvps (invitation_group_id);
 
 insert into storage.buckets (id, name, public)
 values ('wedding-media', 'wedding-media', true)

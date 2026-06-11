@@ -30,6 +30,7 @@ import {
 } from "@/lib/guest-navigation";
 import { imageCropStyleVars } from "@/lib/image-crop";
 import { copy, text } from "@/lib/i18n";
+import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import { isRsvpClosed } from "@/lib/rsvp";
 import type {
   EventKey,
@@ -47,17 +48,30 @@ export function SelfRegisterInvitePage({
   content: WeddingContent;
   inviteType: PublicInviteType;
 }) {
-  const [language, setLanguage] = useState<Language>(content.defaultLanguage);
+  // E1-2: initialize from localStorage; useState initializer runs client-side only (this is a "use client" component)
+  const [language, setLanguage] = useState<Language>(
+    () => getStoredLanguage() ?? content.defaultLanguage,
+  );
   const [hasOpenedInvitation, setHasOpenedInvitation] = useState(false);
   const [savedInvitation, setSavedInvitation] =
     useState<InvitationGroup | null>(null);
   const [showRsvpForm, setShowRsvpForm] = useState(false);
   const [verifiedEmail, setVerifiedEmail] = useState("");
   const [isResolvingInvite, setIsResolvingInvite] = useState(false);
+  // E1-6: track email delivery status from API response
+  const [emailStatus, setEmailStatus] = useState<
+    "sent" | "failed" | "skipped" | null
+  >(null);
   const music = useBackgroundMusic();
   const router = useRouter();
   const detailsRef = useRef<HTMLElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
+  // E1-2: persist language on toggle
+  function handleLanguageChange(lang: Language) {
+    setLanguage(lang);
+    storeLanguage(lang);
+  }
+
   const c = copy[language];
   const activeCode = savedInvitation?.code;
   const currentInvitationHref = invitationHref(activeCode, inviteType.flow);
@@ -83,47 +97,61 @@ export function SelfRegisterInvitePage({
     }, 40);
   }
 
+  // E1-1: wrapped in try/catch so a network failure clears loading instead of freezing UI
   async function resolveExistingSession() {
     setIsResolvingInvite(true);
-    const response = await fetch(
-      `/api/guest-auth/resolve-invite?flow=${encodeURIComponent(inviteType.flow)}`,
-    );
-    const json = (await response.json()) as {
-      verified?: boolean;
-      invitation?: InvitationGroup;
-    };
-    setIsResolvingInvite(false);
-    if (response.ok && json.invitation?.code) {
-      setSavedInvitation(json.invitation);
-      if (inviteType.flow === "overseas" || inviteType.flow === "family") {
-        window.localStorage.setItem(
-          `edward-jessica-${inviteType.flow}-invite-code`,
-          json.invitation.code,
-        );
+    try {
+      const response = await fetch(
+        `/api/guest-auth/resolve-invite?flow=${encodeURIComponent(inviteType.flow)}`,
+      );
+      const json = (await response.json()) as {
+        verified?: boolean;
+        invitation?: InvitationGroup;
+      };
+      setIsResolvingInvite(false);
+      if (response.ok && json.invitation?.code) {
+        // E1-8: if the resolved invitation belongs to a different flow, redirect to its own page
+        setSavedInvitation(json.invitation);
+        if (inviteType.flow === "overseas" || inviteType.flow === "family") {
+          window.localStorage.setItem(
+            `edward-jessica-${inviteType.flow}-invite-code`,
+            json.invitation.code,
+          );
+        }
+        router.push(`/invite/${encodeURIComponent(json.invitation.code)}` as Route);
       }
-      router.push(`/invite/${encodeURIComponent(json.invitation.code)}` as Route);
+    } catch {
+      setIsResolvingInvite(false);
+      // Network error: stay on the form so the guest can proceed manually
     }
   }
 
+  // E1-1 + E1-8: wrapped in try/catch; cross-flow invitations redirect to their canonical page
   async function resolveVerifiedEmail(email: string) {
     setIsResolvingInvite(true);
-    const response = await fetch(
-      `/api/guest-auth/resolve-invite?flow=${encodeURIComponent(inviteType.flow)}`,
-    );
-    const json = (await response.json()) as {
-      invitation?: InvitationGroup;
-    };
-    setIsResolvingInvite(false);
-    if (response.ok && json.invitation?.code) {
-      setSavedInvitation(json.invitation);
-      if (inviteType.flow === "overseas" || inviteType.flow === "family") {
-        window.localStorage.setItem(
-          `edward-jessica-${inviteType.flow}-invite-code`,
-          json.invitation.code,
-        );
+    try {
+      const response = await fetch(
+        `/api/guest-auth/resolve-invite?flow=${encodeURIComponent(inviteType.flow)}`,
+      );
+      const json = (await response.json()) as {
+        invitation?: InvitationGroup;
+      };
+      setIsResolvingInvite(false);
+      if (response.ok && json.invitation?.code) {
+        // E1-8: redirect to the invitation's own page regardless of flow match
+        setSavedInvitation(json.invitation);
+        if (inviteType.flow === "overseas" || inviteType.flow === "family") {
+          window.localStorage.setItem(
+            `edward-jessica-${inviteType.flow}-invite-code`,
+            json.invitation.code,
+          );
+        }
+        router.push(`/invite/${encodeURIComponent(json.invitation.code)}` as Route);
+        return;
       }
-      router.push(`/invite/${encodeURIComponent(json.invitation.code)}` as Route);
-      return;
+    } catch {
+      setIsResolvingInvite(false);
+      // Network error: fall through and let the guest fill in the self-register form
     }
     setVerifiedEmail(email);
   }
@@ -140,10 +168,13 @@ export function SelfRegisterInvitePage({
   }
 
   useEffect(() => {
+    // E1-3: run the same resolve-invite check that revealForm() runs, so a returning guest
+    // landing via #rsvp deep link gets redirected to their personal invite page.
     function openRsvpFromHash() {
       if (window.location.hash !== "#rsvp") return;
       setHasOpenedInvitation(true);
       setShowRsvpForm(true);
+      void resolveExistingSession();
       window.setTimeout(() => {
         formRef.current?.scrollIntoView({
           behavior: "smooth",
@@ -155,6 +186,8 @@ export function SelfRegisterInvitePage({
     openRsvpFromHash();
     window.addEventListener("hashchange", openRsvpFromHash);
     return () => window.removeEventListener("hashchange", openRsvpFromHash);
+    // resolveExistingSession is stable (no deps that change identity); eslint-disable if needed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -180,7 +213,7 @@ export function SelfRegisterInvitePage({
         />
         <div className="hero-content">
           <div>
-            <LanguageToggle language={language} onChange={setLanguage} />
+            <LanguageToggle language={language} onChange={handleLanguageChange} />
             <p className="hero-kicker" style={{ marginTop: 34 }}>
               {c.genericInviteGreeting}
             </p>
@@ -293,84 +326,121 @@ export function SelfRegisterInvitePage({
 
       <section className="section" id="rsvp">
         <div className="container">
-          <div className="rsvp-callout">
-            <div>
-              <p className="eyebrow">{c.registerRsvp}</p>
-              <h2
-                className="serif"
-                style={{
-                  fontSize: "clamp(2.2rem, 6vw, 5rem)",
-                  lineHeight: 0.95,
-                }}
-              >
-                {savedInvitation ? c.rsvpSavedTitle : c.readyToRsvp}
-              </h2>
-              <p className="muted" style={{ marginTop: 14 }}>
-                {savedInvitation
-                  ? c.receivedRsvp
-                  : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
-              </p>
-            </div>
-            {savedInvitation ? null : (
-              <button
-                className="button button-primary rsvp-main-button"
-                type="button"
-                onClick={revealForm}
-              >
-                <Users size={18} />
-                {c.registerRsvp}
-              </button>
-            )}
-          </div>
-
-          {showRsvpForm || savedInvitation ? (
-            <div
-              ref={formRef}
-              id="self-rsvp-form"
-              className="rsvp-grid"
-              style={{ marginTop: 24 }}
-            >
+          {/* E1-4: show a closed notice when the invite type is disabled */}
+          {!inviteType.isEnabled ? (
+            <div className="rsvp-callout">
               <div>
                 <p className="eyebrow">{c.registerRsvp}</p>
-                <h2 className="title serif">{c.tellUsWhoIsComing}</h2>
+                <h2
+                  className="serif"
+                  style={{
+                    fontSize: "clamp(2.2rem, 6vw, 5rem)",
+                    lineHeight: 0.95,
+                  }}
+                >
+                  {language === "id"
+                    ? "Pendaftaran ditutup"
+                    : "Registration closed"}
+                </h2>
                 <p className="muted" style={{ marginTop: 14 }}>
-                  {c.guestCountHint.replace(
-                    "{count}",
-                    String(inviteType.maxGuests),
-                  )}
+                  {language === "id"
+                    ? "Pendaftaran untuk undangan ini sudah ditutup. Mohon hubungi kami jika ada pertanyaan."
+                    : "Registration for this invitation is no longer available. Please contact us if you have any questions."}
                 </p>
               </div>
-              {savedInvitation || isResolvingInvite ? (
-                <div className="invite-panel">
-                  <p className="eyebrow">{c.rsvpSavedTitle}</p>
-                  <h3 className="serif" style={{ fontSize: "2rem", marginTop: 10 }}>
-                    {isResolvingInvite
-                      ? c.checkingExistingRsvp
-                      : c.openingPersonalInvite}
-                  </h3>
-                  <p className="muted" style={{ marginTop: 12 }}>
+            </div>
+          ) : (
+            <>
+              <div className="rsvp-callout">
+                <div>
+                  <p className="eyebrow">{c.registerRsvp}</p>
+                  <h2
+                    className="serif"
+                    style={{
+                      fontSize: "clamp(2.2rem, 6vw, 5rem)",
+                      lineHeight: 0.95,
+                    }}
+                  >
+                    {savedInvitation ? c.rsvpSavedTitle : c.readyToRsvp}
+                  </h2>
+                  <p className="muted" style={{ marginTop: 14 }}>
                     {savedInvitation
                       ? c.receivedRsvp
-                      : c.verifyEmailIntro}
+                      : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
                   </p>
                 </div>
-              ) : verifiedEmail ? (
-                  <SelfRegisterForm
-                    content={content}
-                    events={content.events}
-                    inviteType={inviteType}
-                    language={language}
-                    onSaved={openSavedInvitation}
-                  />
-                ) : (
-                  <EmailOtpGate
-                    autoVerifySession={false}
-                    language={language}
-                    onVerified={resolveVerifiedEmail}
-                  />
+                {savedInvitation ? null : (
+                  <button
+                    className="button button-primary rsvp-main-button"
+                    type="button"
+                    onClick={revealForm}
+                  >
+                    <Users size={18} />
+                    {c.registerRsvp}
+                  </button>
                 )}
-            </div>
-          ) : null}
+              </div>
+
+              {/* E1-6: email confirmation notice when email could not be sent */}
+              {emailStatus && emailStatus !== "sent" ? (
+                <p className="muted" style={{ marginTop: 14 }}>
+                  {language === "id"
+                    ? "Kami tidak dapat mengirim email konfirmasi — mohon simpan tautan halaman ini."
+                    : "We could not send your confirmation email — please save this page link."}
+                </p>
+              ) : null}
+
+              {showRsvpForm || savedInvitation ? (
+                <div
+                  ref={formRef}
+                  id="self-rsvp-form"
+                  className="rsvp-grid"
+                  style={{ marginTop: 24 }}
+                >
+                  <div>
+                    <p className="eyebrow">{c.registerRsvp}</p>
+                    <h2 className="title serif">{c.tellUsWhoIsComing}</h2>
+                    <p className="muted" style={{ marginTop: 14 }}>
+                      {c.guestCountHint.replace(
+                        "{count}",
+                        String(inviteType.maxGuests),
+                      )}
+                    </p>
+                  </div>
+                  {savedInvitation || isResolvingInvite ? (
+                    <div className="invite-panel">
+                      <p className="eyebrow">{c.rsvpSavedTitle}</p>
+                      <h3 className="serif" style={{ fontSize: "2rem", marginTop: 10 }}>
+                        {isResolvingInvite
+                          ? c.checkingExistingRsvp
+                          : c.openingPersonalInvite}
+                      </h3>
+                      <p className="muted" style={{ marginTop: 12 }}>
+                        {savedInvitation
+                          ? c.receivedRsvp
+                          : c.verifyEmailIntro}
+                      </p>
+                    </div>
+                  ) : verifiedEmail ? (
+                    <SelfRegisterForm
+                      content={content}
+                      events={content.events}
+                      inviteType={inviteType}
+                      language={language}
+                      onEmailStatus={setEmailStatus}
+                      onSaved={openSavedInvitation}
+                    />
+                  ) : (
+                    <EmailOtpGate
+                      autoVerifySession={false}
+                      language={language}
+                      onVerified={resolveVerifiedEmail}
+                    />
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       </section>
     </main>
@@ -382,12 +452,14 @@ function SelfRegisterForm({
   events,
   inviteType,
   language,
+  onEmailStatus,
   onSaved,
 }: {
   content: WeddingContent;
   events: WeddingContent["events"];
   inviteType: PublicInviteType;
   language: Language;
+  onEmailStatus: (status: "sent" | "failed" | "skipped") => void;
   onSaved: (invitation: InvitationGroup) => void;
 }) {
   const c = copy[language];
@@ -443,47 +515,62 @@ function SelfRegisterForm({
     return [name.trim()];
   }
 
+  // E1-1: wrapped in try/catch to prevent UI freeze on network failure
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (closed) return;
     setNotice("");
     setLoading(true);
     const finalGuestNames = resolvedGuestNames();
-    const response = await fetch("/api/rsvp/self-register", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        accessCode: inviteType.code,
-        name,
-        phone,
-        guestCount,
-        guestNames: finalGuestNames,
-        mealPreference,
-        status,
-        eventAttendance: status === "attending" ? eventAttendance : {},
-        message,
-      }),
-    });
-    const json = (await response.json()) as {
-      invitation?: InvitationGroup;
-      error?: string;
-    };
-    setLoading(false);
-    if (!response.ok || !json.invitation) {
+    try {
+      const response = await fetch("/api/rsvp/self-register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          accessCode: inviteType.code,
+          name,
+          phone,
+          guestCount,
+          guestNames: finalGuestNames,
+          mealPreference,
+          status,
+          eventAttendance: status === "attending" ? eventAttendance : {},
+          message,
+        }),
+      });
+      const json = (await response.json()) as {
+        invitation?: InvitationGroup;
+        error?: string;
+        emailStatus?: "sent" | "failed" | "skipped";
+      };
+      setLoading(false);
+      if (!response.ok || !json.invitation) {
+        setNotice(
+          language === "id"
+            ? c.unableToSaveRsvp
+            : json.error || c.unableToSaveRsvp,
+        );
+        return;
+      }
+      // E1-6: surface email delivery status to parent
+      if (json.emailStatus) {
+        onEmailStatus(json.emailStatus);
+      }
+      if (inviteType.flow === "overseas" || inviteType.flow === "family") {
+        window.localStorage.setItem(
+          `edward-jessica-${inviteType.flow}-invite-code`,
+          json.invitation.code,
+        );
+      }
+      onSaved(json.invitation);
+    } catch {
+      setLoading(false);
       setNotice(
         language === "id"
-          ? c.unableToSaveRsvp
-          : json.error || c.unableToSaveRsvp,
-      );
-      return;
-    }
-    if (inviteType.flow === "overseas" || inviteType.flow === "family") {
-      window.localStorage.setItem(
-        `edward-jessica-${inviteType.flow}-invite-code`,
-        json.invitation.code,
+          ? "Terjadi kesalahan jaringan. Mohon coba lagi."
+          : "A network error occurred. Please try again.",
       );
     }
-    onSaved(json.invitation);
   }
 
   return (

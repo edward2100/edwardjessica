@@ -82,10 +82,32 @@ export function parseGuestCsv(csv: string): GuestCsvRow[] {
     }));
 }
 
+/**
+ * Sanitize a CSV cell value to prevent formula injection.
+ * Values starting with =, +, -, @ are prefixed with a single quote so
+ * spreadsheet applications do not interpret them as formulas.
+ */
+function sanitizeCsvCell(
+  value: string | number | boolean | undefined,
+): string | number | boolean | undefined {
+  if (typeof value !== "string") return value;
+  if (value.startsWith("=") || value.startsWith("+") || value.startsWith("-") || value.startsWith("@")) {
+    return `'${value}`;
+  }
+  return value;
+}
+
 export function serializeInvitationsCsv(
   rows: Array<Record<string, string | number | boolean | undefined>>,
 ) {
-  return Papa.unparse(rows);
+  const sanitizedRows = rows.map((row) => {
+    const sanitized: Record<string, string | number | boolean | undefined> = {};
+    for (const [key, value] of Object.entries(row)) {
+      sanitized[key] = sanitizeCsvCell(value);
+    }
+    return sanitized;
+  });
+  return Papa.unparse(sanitizedRows);
 }
 
 export function buildGuestCsvTemplate() {

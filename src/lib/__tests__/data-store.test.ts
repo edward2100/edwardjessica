@@ -304,4 +304,139 @@ describe("dashboard stats", () => {
 
     await deleteInvitationByAdmin(attending.code);
   });
+
+  // B11: attending status with no events selected must throw — no silent flip
+  it("rejects RSVP submission with attending status but no events selected", async () => {
+    const created = await upsertInvitationByAdmin({
+      groupName: "QA B11 Group",
+      greeting: "Dear QA B11 Group",
+      phone: "+628811111",
+      email: "qa-b11@example.com",
+      side: "joint",
+      flow: "generic",
+      eligibleEvents: ["dinner"],
+      guests: [{ name: "QA B11 Guest", mealPreference: "non_vegetarian" }],
+    });
+
+    await expect(
+      submitRsvp({
+        code: created.code,
+        status: "attending",
+        eventAttendance: { dinner: false },
+        mealPreferences: {},
+      }),
+    ).rejects.toThrow("Please select at least one event you will attend.");
+
+    await expect(
+      createSelfRegisteredInvitation({
+        accessCode: "JESSMARRIED",
+        email: "qa-b11-self@example.com",
+        name: "QA B11 Self Guest",
+        phone: "+628812222",
+        guestCount: 1,
+        guestNames: ["QA B11 Self Guest"],
+        mealPreference: "vegetarian",
+        status: "attending",
+        eventAttendance: {
+          holy_matrimony: false,
+          tea_lunch: false,
+          dinner: false,
+        },
+      }),
+    ).rejects.toThrow("Please select at least one event you will attend.");
+
+    await deleteInvitationByAdmin(created.code);
+  });
+
+  // B10: declining a guest deletes their travel plan
+  it("deletes travel plan when admin overrides RSVP status to declined", async () => {
+    const attending = await createSelfRegisteredInvitation(
+      {
+        accessCode: "EJOVERSEAS",
+        email: "qa-b10-overseas@example.com",
+        name: "QA B10 Overseas",
+        phone: "+628813333",
+        guestCount: 1,
+        guestNames: ["QA B10 Overseas"],
+        mealPreference: "non_vegetarian",
+        status: "attending",
+        eventAttendance: { holy_matrimony: true, tea_lunch: true, dinner: true },
+      },
+      {
+        id: "overseas",
+        label: { en: "Overseas Guests", id: "Tamu Overseas" },
+        code: "EJOVERSEAS",
+        flow: "overseas",
+        maxGuests: 1,
+        requireGuestNames: false,
+        isEnabled: true,
+      },
+    );
+
+    await submitTravelPlan({
+      code: attending.code,
+      arrivalAt: "2026-12-11T05:00:00.000Z",
+      departureAt: "2026-12-13T05:00:00.000Z",
+      accommodationOption: "specific_roommates",
+      preferredRoommates: "Any room",
+    });
+
+    // Decline — travel plan should be wiped
+    const declined = await updateRsvpByAdmin({
+      code: attending.code,
+      status: "declined",
+    });
+    expect(declined.rsvp.status).toBe("declined");
+
+    // Travel plan submission should fail now (declined status check)
+    await expect(
+      submitTravelPlan({
+        code: attending.code,
+        arrivalAt: "2026-12-11T05:00:00.000Z",
+        departureAt: "2026-12-13T05:00:00.000Z",
+        accommodationOption: "specific_roommates",
+      }),
+    ).rejects.toThrow("Travel plans are only needed for attending guests.");
+
+    await deleteInvitationByAdmin(attending.code);
+  });
+
+  // B7: calculateStats uses the explicit inviteOpenCount when provided
+  it("uses provided inviteOpenCount in stats rather than openedAt fallback", () => {
+    const stats = calculateStats(sampleInvitations, [], 42);
+    expect(stats.inviteOpens).toBe(42);
+  });
+
+  // B13: resubmitting RSVP preserves the original submittedAt timestamp
+  it("preserves original submittedAt on RSVP resubmission", async () => {
+    const created = await upsertInvitationByAdmin({
+      groupName: "QA B13 Group",
+      greeting: "Dear QA B13 Group",
+      phone: "+628814444",
+      email: "qa-b13@example.com",
+      side: "joint",
+      flow: "generic",
+      eligibleEvents: ["dinner"],
+      guests: [{ name: "QA B13 Guest", mealPreference: "non_vegetarian" }],
+    });
+
+    const first = await submitRsvp({
+      code: created.code,
+      status: "attending",
+      eventAttendance: { dinner: true },
+      mealPreferences: { [created.guests[0].id]: "non_vegetarian" },
+    });
+    const originalSubmittedAt = first.rsvp.submittedAt;
+
+    // Resubmit — submittedAt must not change
+    const second = await submitRsvp({
+      code: created.code,
+      status: "attending",
+      eventAttendance: { dinner: true },
+      mealPreferences: { [created.guests[0].id]: "vegetarian" },
+    });
+    expect(second.rsvp.submittedAt).toBe(originalSubmittedAt);
+
+    await deleteInvitationByAdmin(created.code);
+  });
 });

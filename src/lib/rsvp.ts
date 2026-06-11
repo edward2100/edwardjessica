@@ -121,6 +121,11 @@ export function validateSelfRegistration(
   return selfRegistrationSchema.parse(payload);
 }
 
+// C1: sanity window for travel dates — the wedding is 12 Dec 2026 in Medan.
+// Lower bound: 2026-11-01T00:00Z, upper bound: 2027-01-16T00:00Z.
+const TRAVEL_DATE_MIN = new Date("2026-11-01T00:00:00Z");
+const TRAVEL_DATE_MAX = new Date("2027-01-16T00:00:00Z");
+
 export const travelPlanSubmissionSchema = z
   .object({
     code: z.string().min(4).transform(normalizeInviteCode),
@@ -130,20 +135,66 @@ export const travelPlanSubmissionSchema = z
     preferredRoommates: z.string().trim().max(500).optional(),
   })
   .superRefine((value, context) => {
-    if (Number.isNaN(new Date(value.arrivalAt).getTime())) {
+    const arrivalDate = new Date(value.arrivalAt);
+    const departureDate = new Date(value.departureAt);
+
+    const arrivalValid = !Number.isNaN(arrivalDate.getTime());
+    const departureValid = !Number.isNaN(departureDate.getTime());
+
+    if (!arrivalValid) {
       context.addIssue({
         code: "custom",
         path: ["arrivalAt"],
         message: "Please enter a valid arrival time.",
       });
     }
-    if (Number.isNaN(new Date(value.departureAt).getTime())) {
+    if (!departureValid) {
       context.addIssue({
         code: "custom",
         path: ["departureAt"],
         message: "Please enter a valid departure time.",
       });
     }
+
+    // C1: date-range sanity check — both dates must fall within the travel window
+    if (arrivalValid) {
+      if (
+        arrivalDate < TRAVEL_DATE_MIN ||
+        arrivalDate > TRAVEL_DATE_MAX
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["arrivalAt"],
+          message:
+            "Please check your travel dates — they should be around December 2026.",
+        });
+      }
+    }
+    if (departureValid) {
+      if (
+        departureDate < TRAVEL_DATE_MIN ||
+        departureDate > TRAVEL_DATE_MAX
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["departureAt"],
+          message:
+            "Please check your travel dates — they should be around December 2026.",
+        });
+      }
+    }
+
+    // C1: departure must not be before arrival
+    if (arrivalValid && departureValid) {
+      if (departureDate < arrivalDate) {
+        context.addIssue({
+          code: "custom",
+          path: ["departureAt"],
+          message: "Departure must be after arrival.",
+        });
+      }
+    }
+
     if (
       value.accommodationOption === "specific_roommates" &&
       !value.preferredRoommates?.trim()
@@ -202,11 +253,28 @@ export function normalizePhoneNumber(countryCode: string, localNumber: string) {
   const normalizedCode = cleanedCode.startsWith("+")
     ? cleanedCode
     : `+${cleanedCode}`;
+
+  // C5: reject if the country code has no digits after stripping the leading '+'
+  const digitsInCode = normalizedCode.replace(/[^\d]/g, "");
+  if (!digitsInCode) {
+    throw new Error(
+      "Please enter a valid country code. / Harap masukkan kode negara yang valid.",
+    );
+  }
+
   const normalizedLocal = localNumber
     .trim()
     .replace(/[^\d]/g, "")
     .replace(/^0+/, "");
-  return `${normalizedCode} ${normalizedLocal}`.trim();
+
+  // C5: reject if the local number has no digits after cleaning
+  if (!normalizedLocal) {
+    throw new Error(
+      "Please enter a valid phone number. / Harap masukkan nomor telepon yang valid.",
+    );
+  }
+
+  return `${normalizedCode} ${normalizedLocal}`;
 }
 
 export function ensureEligibleEvents(
@@ -232,20 +300,54 @@ export function mealLabel(value: MealPreference) {
   return "Unset";
 }
 
-function eventDateTime(event: WeddingEvent) {
-  const start = event.startTime.replace(":", "");
-  const end =
-    event.endTime?.replace(":", "") ||
-    addOneHour(event.startTime).replace(":", "");
+// C2: addOneHour may advance past midnight. Returns { time, dayOffset } so the
+// caller can advance the date by one day when dayOffset === 1.
+function addOneHour(time: string): { time: string; dayOffset: 0 | 1 } {
+  const [hour = "0", minute = "0"] = time.split(":");
+  const nextHour = Number(hour) + 1;
+  if (nextHour >= 24) {
+    // Wraps into the next day
+    return {
+      time: `${String(nextHour - 24).padStart(2, "0")}:${minute.padStart(2, "0")}`,
+      dayOffset: 1,
+    };
+  }
   return {
-    start: `${event.date.replaceAll("-", "")}T${start}00`,
-    end: `${event.date.replaceAll("-", "")}T${end}00`,
+    time: `${String(nextHour).padStart(2, "0")}:${minute.padStart(2, "0")}`,
+    dayOffset: 0,
   };
 }
 
-function addOneHour(time: string) {
-  const [hour = "0", minute = "0"] = time.split(":");
-  return `${String((Number(hour) + 1) % 24).padStart(2, "0")}:${minute.padStart(2, "0")}`;
+/** Advance an ISO date string (YYYY-MM-DD) by the given number of days. */
+function advanceDateByDays(dateStr: string, days: number): string {
+  if (days === 0) return dateStr;
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function eventDateTime(event: WeddingEvent) {
+  const startCompact = event.startTime.replace(":", "");
+  let endCompact: string;
+  let endDate = event.date;
+
+  if (event.endTime) {
+    endCompact = event.endTime.replace(":", "");
+    // C2: if endTime is earlier than startTime on the same day, the event
+    // crosses midnight — advance the end date by one day.
+    if (event.endTime < event.startTime) {
+      endDate = advanceDateByDays(event.date, 1);
+    }
+  } else {
+    const { time, dayOffset } = addOneHour(event.startTime);
+    endCompact = time.replace(":", "");
+    endDate = advanceDateByDays(event.date, dayOffset);
+  }
+
+  return {
+    start: `${event.date.replaceAll("-", "")}T${startCompact}00`,
+    end: `${endDate.replaceAll("-", "")}T${endCompact}00`,
+  };
 }
 
 export function buildGoogleCalendarUrl(
@@ -275,18 +377,64 @@ function escapeIcsText(value: string) {
     .replace(/;/g, "\\;");
 }
 
-function foldIcsLine(line: string) {
-  const maxLength = 74;
-  if (line.length <= maxLength) return line;
-  const chunks = [];
-  let remaining = line;
-  while (remaining.length > maxLength) {
-    chunks.push(remaining.slice(0, maxLength));
-    remaining = ` ${remaining.slice(maxLength)}`;
+// C3: RFC 5545 §3.1 requires folding at 75 octets (74 content + CRLF).
+// Measure in UTF-8 bytes via TextEncoder and never split a multi-byte sequence.
+// The continuation line starts with a single SPACE (1 octet), leaving 74 octets
+// for content on continuation lines. We use 74 for all lines (conservative,
+// matching the original intent and remaining RFC-compliant).
+function foldIcsLine(line: string): string {
+  // Fast path: ASCII-only lines where char count === byte count.
+  if (line.length <= 74 && !/[^\x00-\x7f]/.test(line)) return line;
+
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(line);
+
+  if (bytes.length <= 74) return line;
+
+  const chunks: string[] = [];
+  const decoder = new TextDecoder("utf-8");
+  let offset = 0;
+  const maxBytes = 74;
+
+  while (offset < bytes.length) {
+    // All lines (first and continuation) get the same 74-byte budget.
+    // Continuation lines have a leading SPACE prepended by the join, so the
+    // total physical line width is 1 (SPACE) + up to 74 bytes = 75 max.
+    if (offset + maxBytes >= bytes.length) {
+      // Remaining bytes fit in one chunk
+      chunks.push(decoder.decode(bytes.slice(offset)));
+      break;
+    }
+    // Find the largest slice that is at most maxBytes and does not split
+    // a multi-byte UTF-8 sequence. UTF-8 continuation bytes are 0x80-0xBF.
+    let cut = offset + maxBytes;
+    while (cut > offset && (bytes[cut]! & 0xc0) === 0x80) {
+      cut -= 1;
+    }
+    chunks.push(decoder.decode(bytes.slice(offset, cut)));
+    offset = cut;
   }
-  chunks.push(remaining);
-  return chunks.join("\r\n");
+
+  // Continuation lines must start with a single SPACE (RFC 5545 §3.1).
+  return chunks.join("\r\n ");
 }
+
+// C4: VTIMEZONE block for Asia/Jakarta.
+// Jakarta is UTC+7 year-round with no DST (single STANDARD component).
+// TZOFFSETFROM and TZOFFSETTO are both +0700.
+// DTSTART is set to a historic date that predates the wedding by many years,
+// satisfying RFC 5545 §3.6.5 (DTSTART is required for STANDARD/DAYLIGHT).
+const VTIMEZONE_ASIA_JAKARTA = [
+  "BEGIN:VTIMEZONE",
+  "TZID:Asia/Jakarta",
+  "BEGIN:STANDARD",
+  "DTSTART:19700101T000000",
+  "TZOFFSETFROM:+0700",
+  "TZOFFSETTO:+0700",
+  "TZNAME:WIB",
+  "END:STANDARD",
+  "END:VTIMEZONE",
+];
 
 export function buildWeddingCalendarIcs(
   content: WeddingContent,
@@ -305,6 +453,9 @@ export function buildWeddingCalendarIcs(
     `X-WR-CALNAME:${escapeIcsText(content.coupleName)}`,
     `X-WR-TIMEZONE:${content.timezone}`,
   ];
+
+  // C4: emit VTIMEZONE before events so TZID references in DTSTART/DTEND are valid
+  lines.push(...VTIMEZONE_ASIA_JAKARTA);
 
   for (const event of content.events) {
     const dates = eventDateTime(event);

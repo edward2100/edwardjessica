@@ -15,6 +15,9 @@ const countryCodes = [
   { label: "Other", value: "other" },
 ];
 
+// E2-6: country code must be an optional leading "+" followed by 1–4 digits.
+const COUNTRY_CODE_RE = /^\+?\d{1,4}$/;
+
 export function PhoneCountryInput({
   id,
   label,
@@ -31,12 +34,34 @@ export function PhoneCountryInput({
   const [countryCode, setCountryCode] = useState("+62");
   const [manualCountryCode, setManualCountryCode] = useState("");
   const [localNumber, setLocalNumber] = useState(value);
+
   const effectiveCountryCode =
     countryCode === "other" ? manualCountryCode : countryCode;
 
+  // E2-6: derive validation error for the "Other" code field directly
+  // (no useState needed — it is a function of countryCode + manualCountryCode).
+  const countryCodeError =
+    countryCode === "other" &&
+    (!manualCountryCode || !COUNTRY_CODE_RE.test(manualCountryCode))
+      ? "Invalid country code / Kode negara tidak valid (contoh: +1, +44)"
+      : null;
+
+  // E2-6: propagate phone value upward. When the country code is invalid,
+  // emit an empty string so the parent treats it as "no phone".
+  // C5: normalizePhoneNumber throws when the local number is empty after cleaning
+  // (e.g. user cleared the field). Guard with try/catch — on throw, emit empty
+  // string so the parent treats it as absent rather than crashing the React tree.
   useEffect(() => {
-    onChange(normalizePhoneNumber(effectiveCountryCode || "+62", localNumber));
-  }, [effectiveCountryCode, localNumber, onChange]);
+    if (countryCodeError) {
+      onChange("");
+      return;
+    }
+    try {
+      onChange(normalizePhoneNumber(effectiveCountryCode, localNumber));
+    } catch {
+      onChange("");
+    }
+  }, [countryCodeError, effectiveCountryCode, localNumber, onChange]);
 
   return (
     <div className="form-field">
@@ -46,7 +71,9 @@ export function PhoneCountryInput({
           aria-label="Country code"
           className="select"
           value={countryCode}
-          onChange={(event) => setCountryCode(event.target.value)}
+          onChange={(event) => {
+            setCountryCode(event.target.value);
+          }}
         >
           {countryCodes.map((option) => (
             <option key={option.value} value={option.value}>
@@ -58,7 +85,7 @@ export function PhoneCountryInput({
           <input
             aria-label="Manual country code"
             className="input"
-            placeholder="+"
+            placeholder="e.g. +1"
             value={manualCountryCode}
             onChange={(event) => setManualCountryCode(event.target.value)}
             required={required}
@@ -73,6 +100,11 @@ export function PhoneCountryInput({
           required={required}
         />
       </div>
+      {countryCodeError ? (
+        <span className="form-error" role="alert">
+          {countryCodeError}
+        </span>
+      ) : null}
     </div>
   );
 }

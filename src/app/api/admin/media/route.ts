@@ -46,12 +46,27 @@ function normalizeKind(
     : "gallery";
 }
 
+function isHeicFile(file: File) {
+  const name = file.name.toLowerCase();
+  return (
+    file.type === "image/heic" ||
+    file.type === "image/heif" ||
+    name.endsWith(".heic") ||
+    name.endsWith(".heif")
+  );
+}
+
 function validateFileKind(file: File, kind: MediaAsset["kind"]) {
-  if (
-    (kind === "hero" || kind === "gallery") &&
-    !file.type.startsWith("image/")
-  ) {
-    throw new Error("Please upload an image file for photos.");
+  if (kind === "hero" || kind === "gallery") {
+    if (!file.type.startsWith("image/")) {
+      throw new Error("Please upload an image file for photos.");
+    }
+    // sharp on Vercel cannot decode HEIC/HEIF — reject early with a clear message
+    if (isHeicFile(file)) {
+      throw new Error(
+        "HEIC/HEIF photos are not supported. Please convert to JPG or PNG first.",
+      );
+    }
   }
   if (kind === "music" && !file.type.startsWith("audio/")) {
     throw new Error("Please upload an audio file for music.");
@@ -61,7 +76,7 @@ function validateFileKind(file: File, kind: MediaAsset["kind"]) {
   }
   if (kind !== "music" && file.size > maxImageUploadBytes) {
     throw new Error(
-      "Photo upload is too large. Please use a JPG or PNG below 35MB so the admin page can optimize it before upload.",
+      "Photo upload is too large. Please keep it below 5MB.",
     );
   }
 }

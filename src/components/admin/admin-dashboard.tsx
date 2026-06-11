@@ -141,14 +141,15 @@ function isHeicImage(file: File) {
   );
 }
 
-function webFileName(fileName: string) {
+function webFileName(fileName: string, mimeType: string) {
   const base =
     fileName
       .toLowerCase()
       .replace(/\.[^.]+$/, "")
       .replace(/[^a-z0-9._-]+/g, "-")
       .replace(/^-+|-+$/g, "") || "photo";
-  return `${base}-optimized.webp`;
+  const ext = mimeType === "image/jpeg" ? "jpg" : "webp";
+  return `${base}-optimized.${ext}`;
 }
 
 function canvasToBlob(
@@ -197,17 +198,37 @@ async function compressImageInBrowser(
   const qualities = kind === "hero" || slot === "hero"
     ? [0.78, 0.68, 0.58]
     : [0.76, 0.66, 0.56];
+
+  // Try WebP first (smaller files); fall back to JPEG which is universally supported.
   let bestBlob: Blob | null = null;
   for (const quality of qualities) {
     const blob = await canvasToBlob(canvas, "image/webp", quality);
-    if (!blob) continue;
-    bestBlob = blob;
-    if (blob.size <= maxServerImageBytes) break;
+    // If the browser returned a blob but it isn't actually WebP (some browsers
+    // silently produce PNG), treat it as unsupported and break to the JPEG path.
+    if (blob && blob.type === "image/webp") {
+      bestBlob = blob;
+      if (blob.size <= maxServerImageBytes) break;
+    } else {
+      break;
+    }
   }
+
+  // Fall back to JPEG if WebP was not produced or was too large at all quality levels.
+  if (!bestBlob || bestBlob.type !== "image/webp") {
+    bestBlob = null;
+    for (const quality of qualities) {
+      const blob = await canvasToBlob(canvas, "image/jpeg", quality);
+      if (!blob) continue;
+      bestBlob = blob;
+      if (blob.size <= maxServerImageBytes) break;
+    }
+  }
+
   if (!bestBlob) throw new Error("Unable to optimize this image.");
 
-  return new File([bestBlob], webFileName(file.name), {
-    type: "image/webp",
+  const mimeType = bestBlob.type === "image/webp" ? "image/webp" : "image/jpeg";
+  return new File([bestBlob], webFileName(file.name, mimeType), {
+    type: mimeType,
     lastModified: Date.now(),
   });
 }
@@ -440,6 +461,14 @@ function GuestsView({
       snapshot?: AdminSnapshot;
       error?: string;
     };
+    // Partial success: snapshot returned alongside an error means some rows
+    // failed (WP-B B14 aggregate error). Update the snapshot and surface
+    // the failure details so admin can see exactly which rows were rejected.
+    if (json.snapshot && json.error) {
+      onSnapshot(json.snapshot);
+      setNotice(`Import partially completed with errors: ${json.error}`);
+      return;
+    }
     if (!response.ok || !json.snapshot) {
       setNotice(json.error || "Import failed.");
       return;
@@ -1457,15 +1486,17 @@ function ContentView({
           />
         </label>
         <label className="form-field">
-          <span>RSVP deadline</span>
+          <span>RSVP deadline (Asia/Jakarta)</span>
           <input
             className="input"
             type="datetime-local"
-            value={draft.rsvpDeadline.slice(0, 16)}
+            value={isoToJakartaLocal(draft.rsvpDeadline)}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
-                rsvpDeadline: new Date(event.target.value).toISOString(),
+                // Treat the datetime-local value as Jakarta wall time (+07:00) so
+                // repeated open/save cycles are byte-stable with no UTC drift.
+                rsvpDeadline: jakartaLocalToIso(event.target.value),
               }))
             }
           />
@@ -2580,4 +2611,46 @@ function formatDateTime(value?: string) {
     minute: "2-digit",
     hour12: false,
   }).format(new Date(value));
+}
+
+/**
+ * Convert an ISO instant string to a datetime-local value rendered in
+ * Asia/Jakarta wall time (UTC+7). The returned string is always in the
+ * format required by <input type="datetime-local">: "YYYY-MM-DDTHH:mm".
+ * This ensures the deadline editor always shows the correct Jakarta time
+ * regardless of the admin's browser timezone.
+ */
+function isoToJakartaLocal(iso: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return iso.slice(0, 16);
+  // Extract wall-time parts in Asia/Jakarta
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  const minute = get("minute");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+/**
+ * Convert a datetime-local input value (treated as Asia/Jakarta wall time)
+ * back to an ISO 8601 string with a +07:00 offset. This avoids the
+ * browser-timezone ambiguity of `new Date(value)` and ensures that repeated
+ * open/save cycles of the deadline editor are byte-stable.
+ */
+function jakartaLocalToIso(localValue: string): string {
+  if (!localValue) return "";
+  // localValue is "YYYY-MM-DDTHH:mm" — append the Jakarta offset directly.
+  return `${localValue}:00+07:00`;
 }

@@ -34,8 +34,20 @@ export async function POST(request: Request) {
     const { csv } = (await request.json()) as { csv?: string };
     if (!csv) return NextResponse.json({ error: "CSV content is required." }, { status: 400 });
     const rows = parseGuestCsv(csv);
-    const created = await upsertInvitationFromCsvRows(rows);
-    return NextResponse.json({ created, snapshot: await getAdminSnapshot() });
+    // B14/F5: upsertInvitationFromCsvRows now returns { created, rowErrors } instead of
+    // throwing on partial failure, so the dashboard can surface which rows failed.
+    const { created, rowErrors } = await upsertInvitationFromCsvRows(rows);
+    const snapshot = await getAdminSnapshot();
+    if (rowErrors.length > 0) {
+      const failedNames = rowErrors.map((e) => `"${e.groupName}" (${e.message})`).join("; ");
+      // HTTP 207 Multi-Status: some rows committed, some failed. Return both snapshot and
+      // error so the dashboard partial-success branch fires (json.snapshot && json.error).
+      return NextResponse.json(
+        { created, snapshot, error: `Import partially completed. Failed rows: ${failedNames}` },
+        { status: 207 }
+      );
+    }
+    return NextResponse.json({ created, snapshot });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to import guests." },

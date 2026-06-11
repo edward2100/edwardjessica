@@ -433,8 +433,17 @@ function rowInvitationFlow(row: any): PublicInviteFlow {
   return "generic";
 }
 
-function missingFlowColumn(error: { message?: string } | null) {
-  return /flow|schema cache|column/i.test(error?.message || "");
+// B8: detect missing column errors via PG code 42703 and the column name,
+// rather than a loose message regex that can match unrelated errors.
+function missingFlowColumn(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  // PG "undefined_column" error code
+  if (error.code === "42703") {
+    const msg = error.message || "";
+    return /\bflow\b|\bmax_guests\b/.test(msg);
+  }
+  // fallback for non-PG drivers that may not surface the code
+  return /flow|schema cache/i.test(error.message || "");
 }
 
 function normalizeAdminGuest(
@@ -534,20 +543,24 @@ function adjustRsvpForEligibleEvents(
 export async function getPublishedContent(): Promise<WeddingContent> {
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } =
-      (await supabase
-        ?.from("content_versions")
-        .select("content,published_at")
-        .eq("status", "published")
-        .order("published_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()) || {};
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B2: throw on query error — do NOT fall through to preview store
+    const { data, error } = await supabase
+      .from("content_versions")
+      .select("content,published_at")
+      .eq("status", "published")
+      .order("published_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
     if (data?.content) {
       return {
         ...normalizeWeddingContent(data.content as Partial<WeddingContent>),
         publishedAt: data.published_at || undefined,
       };
     }
+    // No published content yet — return defaults
+    return normalizeWeddingContent({});
   }
   return normalizeWeddingContent(clone(previewStore().content));
 }
@@ -555,16 +568,20 @@ export async function getPublishedContent(): Promise<WeddingContent> {
 export async function getDraftContent(): Promise<WeddingContent> {
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } =
-      (await supabase
-        ?.from("content_versions")
-        .select("content")
-        .eq("status", "draft")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()) || {};
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B2: throw on query error — do NOT fall through to preview store
+    const { data, error } = await supabase
+      .from("content_versions")
+      .select("content")
+      .eq("status", "draft")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
     if (data?.content)
       return normalizeWeddingContent(data.content as Partial<WeddingContent>);
+    // No draft yet — fall back to published or defaults
+    return getPublishedContent();
   }
   return normalizeWeddingContent(clone(previewStore().draftContent));
 }
@@ -573,11 +590,14 @@ export async function saveDraftContent(content: WeddingContent) {
   const normalizedContent = normalizeWeddingContent(content);
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    await supabase?.from("content_versions").insert({
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B1: check write error
+    const { error } = await supabase.from("content_versions").insert({
       status: "draft",
       content: normalizedContent,
       updated_at: new Date().toISOString(),
     });
+    if (error) throw new Error(error.message);
   } else {
     previewStore().draftContent = clone(normalizedContent);
   }
@@ -592,18 +612,23 @@ export async function publishDraftContent() {
   };
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    await supabase?.from("content_versions").insert({
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B1: check write error
+    const { error } = await supabase.from("content_versions").insert({
       status: "published",
       content: published,
       published_at: published.publishedAt,
       updated_at: published.publishedAt,
     });
+    if (error) throw new Error(error.message);
     const mediaUrls = publishedMediaUrls(published);
     if (mediaUrls.length) {
-      await supabase
-        ?.from("media_assets")
+      // B1: check media update error
+      const { error: mediaError } = await supabase
+        .from("media_assets")
         .update({ is_published: true })
         .in("url", mediaUrls);
+      if (mediaError) throw new Error(mediaError.message);
     }
   } else {
     previewStore().content = clone(published);
@@ -642,12 +667,14 @@ export async function getInvitationByCode(code: string) {
   const normalizedCode = code.trim().toUpperCase();
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } =
-      (await supabase
-        ?.from("invitation_groups")
-        .select("*,rsvps(*),guests(*)")
-        .eq("code", normalizedCode)
-        .maybeSingle()) || {};
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B2: throw on query error — do NOT fall through to preview store
+    const { data, error } = await supabase
+      .from("invitation_groups")
+      .select("*,rsvps(*),guests(*)")
+      .eq("code", normalizedCode)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
     if (data) return mapInvitationRow(data);
     return null;
   }
@@ -661,6 +688,12 @@ export async function getInvitationByCode(code: string) {
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
+}
+
+// B3: escape ilike wildcard characters so a guest email containing %, _, or \
+// does not accidentally match unintended rows.
+function escapeLikePattern(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
 function scoreResolvedInvitation(invitation: InvitationGroup) {
@@ -680,12 +713,15 @@ export async function getInvitationByVerifiedEmail(
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } =
-      (await supabase
-        ?.from("invitation_groups")
-        .select("*,rsvps(*),guests(*)")
-        .ilike("email", verifiedEmail)
-        .order("created_at", { ascending: false })) || {};
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B3: escape wildcard characters before ilike to prevent injection
+    // B2: throw on query error — do NOT fall through to preview store
+    const { data, error } = await supabase
+      .from("invitation_groups")
+      .select("*,rsvps(*),guests(*)")
+      .ilike("email", escapeLikePattern(verifiedEmail))
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
     const invitations = (data || [])
       .map(mapInvitationRow)
       .filter((invitation) =>
@@ -736,12 +772,27 @@ export async function ensureInvitationEmailAllowed(
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { error } =
-      (await supabase
-        ?.from("invitation_groups")
-        .update({ email: verifiedEmail })
-        .eq("id", invitation.id)) || {};
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B4: conditional update — only claim if email is still null at write time
+    // (prevents TOCTOU race where two requests both see email=null)
+    const { data: updated, error } = await supabase
+      .from("invitation_groups")
+      .update({ email: verifiedEmail })
+      .eq("id", invitation.id)
+      .is("email", null)
+      .select("id,email");
     if (error) throw new Error(error.message);
+    if (!updated || updated.length === 0) {
+      // Another request claimed the slot first — re-fetch to check
+      const latest = await getInvitationByCode(code);
+      if (
+        latest?.email &&
+        normalizeEmail(latest.email) !== verifiedEmail
+      ) {
+        throw new Error("Please verify the email assigned to this invitation.");
+      }
+      return latest || invitation;
+    }
   } else {
     const store = previewStore();
     const target = store.invitations.find((item) => item.id === invitation.id);
@@ -758,16 +809,25 @@ export async function recordInviteOpen(code: string) {
   const normalizedCode = code.trim().toUpperCase();
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } = (await supabase
-      ?.from("invitation_groups")
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B2: throw on query error
+    const { data, error: lookupError } = await supabase
+      .from("invitation_groups")
       .select("id")
       .eq("code", normalizedCode)
-      .maybeSingle()) || { data: null };
+      .maybeSingle();
+    if (lookupError) throw new Error(lookupError.message);
     if (data?.id) {
-      await supabase?.from("invite_open_events").insert({
-        invitation_group_id: data.id,
-        opened_at: new Date().toISOString(),
-      });
+      // B1: check insert error — invite opens are best-effort; log but don't throw
+      const { error } = await supabase
+        .from("invite_open_events")
+        .insert({
+          invitation_group_id: data.id,
+          opened_at: new Date().toISOString(),
+        });
+      if (error) {
+        console.error("[recordInviteOpen] Failed to insert open event:", error.message);
+      }
     }
     return;
   }
@@ -793,13 +853,24 @@ export async function submitRsvp(
     submission.eventAttendance,
     invitation.eligibleEvents,
   );
-  const status =
+
+  // B11: replace silent attending→declined flip with an explicit error.
+  // Guests must select at least one event when claiming "attending".
+  if (
     submission.status === "attending" &&
     !hasAtLeastOneAttendingEvent(eventAttendance)
-      ? "declined"
-      : submission.status;
+  ) {
+    throw new Error("Please select at least one event you will attend.");
+  }
+
+  const status = submission.status;
   const updatedAt = new Date().toISOString();
-  const additionalGuests =
+
+  // B9: deduplicate additionalGuests against existing non-primary guests.
+  // An entry with a matching id OR (no id AND case-insensitive trimmed name match)
+  // is treated as an update to an existing guest, not a new insert.
+  const existingNonPrimary = invitation.guests.slice(1); // primary guest is guests[0]
+  const rawAdditional =
     status === "attending"
       ? (submission.additionalGuests || [])
           .map((guest) => ({
@@ -810,16 +881,93 @@ export async function submitRsvp(
           }))
           .filter((guest) => guest.name)
       : [];
-  if (invitation.guests.length + additionalGuests.length > invitation.maxGuests) {
+
+  // Separate into updates (match existing) and new inserts
+  const additionalGuestsWithIds: Array<{
+    id?: string;
+    invitationGroupId: string;
+    name: string;
+    mealPreference: Guest["mealPreference"];
+    isExisting: boolean;
+  }> = rawAdditional.map((guest) => {
+    const matchById = guest.id
+      ? invitation.guests.find((existing) => existing.id === guest.id)
+      : undefined;
+    const matchByName = !guest.id
+      ? existingNonPrimary.find(
+          (existing) =>
+            existing.name.trim().toLowerCase() === guest.name.trim().toLowerCase(),
+        )
+      : undefined;
+    const match = matchById || matchByName;
+    return {
+      ...guest,
+      id: match?.id || guest.id,
+      isExisting: Boolean(match),
+    };
+  });
+
+  // For max-guest check, count truly new additions (not updates to existing slots)
+  const newAdditions = additionalGuestsWithIds.filter((g) => !g.isExisting);
+  const existingPrimaryCount = invitation.guests.length;
+  // "existing non-primary updates" don't add to the count — only new ones do
+  const projectedTotal = existingPrimaryCount + newAdditions.length;
+
+  if (projectedTotal > invitation.maxGuests) {
     throw new Error(
       `This invitation allows up to ${invitation.maxGuests} guests.`,
     );
   }
   if (
-    additionalGuests.some((guest) => guest.mealPreference === "unset")
+    rawAdditional.some((guest) => guest.mealPreference === "unset")
   ) {
     throw new Error("Please select a meal preference for every added guest.");
   }
+
+  // Build the final guest list:
+  // - existing guests with potentially updated meal preferences
+  // - existing non-primary guests with name/meal updates from submission
+  // - genuinely new guests
+  const existingGuestIds = new Set(invitation.guests.map((g) => g.id));
+  const updatedExistingGuests = invitation.guests.map((guest) => ({
+    ...guest,
+    mealPreference:
+      submission.mealPreferences[guest.id] || guest.mealPreference,
+  }));
+  // Apply name/meal updates from additionalGuestsWithIds to existing guests
+  for (const ag of additionalGuestsWithIds) {
+    if (ag.isExisting && ag.id) {
+      const idx = updatedExistingGuests.findIndex((g) => g.id === ag.id);
+      if (idx >= 0) {
+        updatedExistingGuests[idx] = {
+          ...updatedExistingGuests[idx],
+          name: ag.name,
+          mealPreference: ag.mealPreference,
+        };
+      }
+    }
+  }
+  const trulyNewGuests = additionalGuestsWithIds
+    .filter((g) => !g.isExisting)
+    .map((guest, index) => ({
+      id: guest.id || `${invitation.id}-extra-${Date.now()}-${index + 1}`,
+      invitationGroupId: invitation.id,
+      name: guest.name,
+      mealPreference: guest.mealPreference,
+    }));
+
+  const finalGuests = [...updatedExistingGuests, ...trulyNewGuests];
+
+  // B12: when attending, reject if any guest still has mealPreference "unset"
+  if (status === "attending") {
+    const unsetGuest = finalGuests.find((g) => g.mealPreference === "unset");
+    if (unsetGuest) {
+      throw new Error(
+        "Please select a meal preference for every guest attending.",
+      );
+    }
+  }
+
   const updatedInvitation: InvitationGroup = {
     ...invitation,
     rsvp: {
@@ -827,64 +975,81 @@ export async function submitRsvp(
       status,
       eventAttendance,
       message: submission.message,
+      // B13: preserve original submittedAt on resubmission
       submittedAt: invitation.rsvp.submittedAt || updatedAt,
       updatedAt,
       updatedBy: changedBy,
     },
-    guests: invitation.guests.map((guest) => ({
-      ...guest,
-      mealPreference:
-        submission.mealPreferences[guest.id] || guest.mealPreference,
-    })).concat(
-      additionalGuests.map((guest, index) => ({
-        ...guest,
-        id: guest.id || `${invitation.id}-extra-${Date.now()}-${index + 1}`,
-      })),
-    ),
+    guests: finalGuests,
   };
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    await supabase?.from("rsvps").upsert({
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B1: check all write errors
+    const { error: rsvpError } = await supabase.from("rsvps").upsert({
       id: invitation.rsvp.id,
       invitation_group_id: invitation.id,
       status: updatedInvitation.rsvp.status,
       event_attendance: updatedInvitation.rsvp.eventAttendance,
       message: updatedInvitation.rsvp.message,
+      // B13: only send submitted_at on first insert; don't reset it on resubmission
       submitted_at: updatedInvitation.rsvp.submittedAt,
       updated_at: updatedAt,
       updated_by: changedBy,
     });
+    if (rsvpError) throw new Error(rsvpError.message);
+
     for (const guest of updatedInvitation.guests) {
-      const isExistingGuest = invitation.guests.some((item) => item.id === guest.id);
+      const isExistingGuest = existingGuestIds.has(guest.id);
       if (isExistingGuest) {
-        await supabase
-          ?.from("guests")
-          .update({ meal_preference: guest.mealPreference })
+        const { error } = await supabase
+          .from("guests")
+          .update({ name: guest.name, meal_preference: guest.mealPreference })
           .eq("id", guest.id);
+        if (error) throw new Error(error.message);
       } else {
-        const { data } =
-          (await supabase
-            ?.from("guests")
-            .insert({
-              invitation_group_id: invitation.id,
-              name: guest.name,
-              meal_preference: guest.mealPreference,
-            })
-            .select("id")
-            .single()) || {};
+        const { data, error } = await supabase
+          .from("guests")
+          .insert({
+            invitation_group_id: invitation.id,
+            name: guest.name,
+            meal_preference: guest.mealPreference,
+          })
+          .select("id")
+          .single();
+        if (error) throw new Error(error.message);
         if (data?.id) guest.id = String(data.id);
       }
     }
-    await supabase?.from("rsvp_history").insert({
+
+    // B10: when status transitions to "declined", delete travel plan
+    if (status === "declined") {
+      const { error: travelError } = await supabase
+        .from("travel_plans")
+        .delete()
+        .eq("invitation_group_id", invitation.id);
+      if (travelError) {
+        console.error("[submitRsvp] Failed to delete travel plan on decline:", travelError.message);
+      }
+    }
+
+    const { error: historyError } = await supabase.from("rsvp_history").insert({
       invitation_group_id: invitation.id,
       status: updatedInvitation.rsvp.status,
       changed_by: changedBy,
       changed_at: updatedAt,
       snapshot: updatedInvitation.rsvp,
     });
+    if (historyError) throw new Error(historyError.message);
   } else {
     const store = previewStore();
+    // B10: delete travel plan on decline in preview store too
+    if (status === "declined") {
+      store.travelPlans = store.travelPlans.filter(
+        (plan) => plan.invitationGroupId !== invitation.id,
+      );
+    }
     store.invitations = store.invitations.map((item) =>
       item.id === invitation.id ? updatedInvitation : item,
     );
@@ -926,11 +1091,16 @@ export async function createSelfRegisteredInvitation(
     submission.eventAttendance,
     eventKeys,
   );
-  const status =
+
+  // B11: throw instead of silently flipping attending→declined
+  if (
     submission.status === "attending" &&
     !hasAtLeastOneAttendingEvent(eventAttendance)
-      ? "declined"
-      : submission.status;
+  ) {
+    throw new Error("Please select at least one event you will attend.");
+  }
+
+  const status = submission.status;
 
   let invitation: InvitationGroup = {
     id,
@@ -964,7 +1134,7 @@ export async function createSelfRegisteredInvitation(
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    if (!supabase) throw new Error("Supabase is not configured.");
+    if (!supabase) throw new Error("Supabase client unavailable");
     const groupInsert = {
       code: invitation.code,
       greeting: invitation.greeting,
@@ -981,12 +1151,21 @@ export async function createSelfRegisteredInvitation(
       eligible_events: invitation.eligibleEvents,
       opened_at: invitation.openedAt,
     };
+
+    // B5: handle unique-violation (23505) on invitation insert gracefully.
+    // If the conflict is on email+flow (duplicate self-registration race), re-query
+    // and return the existing invitation (idempotent success).
     let { data: insertedGroup, error } = await supabase
       .from("invitation_groups")
       .insert({ ...groupInsert, flow: invitation.flow })
       .select("id")
       .single();
     if (error && missingFlowColumn(error)) {
+      // B8: missing flow/max_guests columns — legacy schema, warn loudly
+      console.error(
+        "[createSelfRegisteredInvitation] WARNING: flow/max_guests columns appear missing from invitation_groups. " +
+          "Schema migration is required. Retrying without these columns.",
+      );
       const { max_guests, ...legacyGroupInsert } = groupInsert;
       const retry = await supabase
         .from("invitation_groups")
@@ -996,51 +1175,89 @@ export async function createSelfRegisteredInvitation(
       insertedGroup = retry.data;
       error = retry.error;
     }
-    if (error || !insertedGroup?.id)
-      throw new Error(error?.message || "Unable to create self-registration.");
+    if (error) {
+      // B5: on email uniqueness conflict, re-query by email+flow and return existing
+      if (error.code === "23505" && submission.email) {
+        const existing = await getInvitationByVerifiedEmail(
+          submission.email,
+          invitation.flow,
+        );
+        if (existing) return existing;
+      }
+      // B6: on code unique-violation, regenerate with numeric suffix and retry up to 3 times
+      if (error.code === "23505") {
+        let retried: typeof insertedGroup = null;
+        let retryError: typeof error | null = error;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const suffixedCode = `${invitation.code}-${attempt}`;
+          const retryResult = await supabase
+            .from("invitation_groups")
+            .insert({ ...groupInsert, code: suffixedCode, flow: invitation.flow })
+            .select("id")
+            .single();
+          retried = retryResult.data;
+          retryError = retryResult.error;
+          if (!retryError) {
+            invitation = { ...invitation, code: suffixedCode };
+            break;
+          }
+        }
+        if (retryError || !retried?.id) {
+          throw new Error("Unable to generate a unique invitation code. Please try again.");
+        }
+        insertedGroup = retried;
+      } else {
+        throw new Error(error.message || "Unable to create self-registration.");
+      }
+    }
+    if (!insertedGroup?.id)
+      throw new Error("Unable to create self-registration.");
 
+    const insertedGroupId = String(insertedGroup.id);
     invitation = {
       ...invitation,
-      id: String(insertedGroup.id),
+      id: insertedGroupId,
       rsvp: {
         ...invitation.rsvp,
-        invitationGroupId: String(insertedGroup.id),
+        invitationGroupId: insertedGroupId,
       },
       guests: invitation.guests.map((guest) => ({
         ...guest,
-        invitationGroupId: String(insertedGroup.id),
+        invitationGroupId: insertedGroupId,
       })),
     };
 
-    const { data: insertedRsvp } =
-      (await supabase
-        ?.from("rsvps")
-        .insert({
-          invitation_group_id: invitation.id,
-          status: invitation.rsvp.status,
-          event_attendance: invitation.rsvp.eventAttendance,
-          message: invitation.rsvp.message,
-          submitted_at: invitation.rsvp.submittedAt,
-          updated_at: invitation.rsvp.updatedAt,
-          updated_by: "guest",
-        })
-        .select("id")
-        .single()) || {};
+    // B1: check RSVP insert error
+    const { data: insertedRsvp, error: rsvpInsertError } = await supabase
+      .from("rsvps")
+      .insert({
+        invitation_group_id: invitation.id,
+        status: invitation.rsvp.status,
+        event_attendance: invitation.rsvp.eventAttendance,
+        message: invitation.rsvp.message,
+        submitted_at: invitation.rsvp.submittedAt,
+        updated_at: invitation.rsvp.updatedAt,
+        updated_by: "guest",
+      })
+      .select("id")
+      .single();
+    if (rsvpInsertError) throw new Error(rsvpInsertError.message);
     if (insertedRsvp?.id) {
       invitation.rsvp.id = String(insertedRsvp.id);
     }
 
-    const { data: insertedGuests } =
-      (await supabase
-        ?.from("guests")
-        .insert(
-          invitation.guests.map((guest) => ({
-            invitation_group_id: invitation.id,
-            name: guest.name,
-            meal_preference: guest.mealPreference,
-          })),
-        )
-        .select("id,name,meal_preference")) || {};
+    // B1: check guest insert error
+    const { data: insertedGuests, error: guestsInsertError } = await supabase
+      .from("guests")
+      .insert(
+        invitation.guests.map((guest) => ({
+          invitation_group_id: invitation.id,
+          name: guest.name,
+          meal_preference: guest.mealPreference,
+        })),
+      )
+      .select("id,name,meal_preference");
+    if (guestsInsertError) throw new Error(guestsInsertError.message);
     if (insertedGuests?.length) {
       invitation.guests = insertedGuests.map((guest) => ({
         id: String(guest.id),
@@ -1050,13 +1267,15 @@ export async function createSelfRegisteredInvitation(
       }));
     }
 
-    await supabase?.from("rsvp_history").insert({
+    // B1: check history insert error
+    const { error: historyError } = await supabase.from("rsvp_history").insert({
       invitation_group_id: invitation.id,
       status: invitation.rsvp.status,
       changed_by: "guest",
       changed_at: now,
       snapshot: invitation.rsvp,
     });
+    if (historyError) throw new Error(historyError.message);
   } else {
     const store = previewStore();
     store.invitations.unshift(invitation);
@@ -1118,7 +1337,9 @@ export async function updateRsvpByAdmin(update: AdminRsvpUpdate) {
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    await supabase?.from("rsvps").upsert({
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B1: check all write errors
+    const { error: rsvpError } = await supabase.from("rsvps").upsert({
       id: invitation.rsvp.id,
       invitation_group_id: invitation.id,
       status: updatedInvitation.rsvp.status,
@@ -1128,15 +1349,35 @@ export async function updateRsvpByAdmin(update: AdminRsvpUpdate) {
       updated_at: now,
       updated_by: "admin",
     });
-    await supabase?.from("rsvp_history").insert({
+    if (rsvpError) throw new Error(rsvpError.message);
+
+    // B10: when admin overrides status to "declined", delete the travel plan
+    if (update.status === "declined") {
+      const { error: travelError } = await supabase
+        .from("travel_plans")
+        .delete()
+        .eq("invitation_group_id", invitation.id);
+      if (travelError) {
+        console.error("[updateRsvpByAdmin] Failed to delete travel plan on decline:", travelError.message);
+      }
+    }
+
+    const { error: historyError } = await supabase.from("rsvp_history").insert({
       invitation_group_id: invitation.id,
       status: updatedInvitation.rsvp.status,
       changed_by: "admin",
       changed_at: now,
       snapshot: updatedInvitation.rsvp,
     });
+    if (historyError) throw new Error(historyError.message);
   } else {
     const store = previewStore();
+    // B10: delete travel plan on decline in preview store
+    if (update.status === "declined") {
+      store.travelPlans = store.travelPlans.filter(
+        (plan) => plan.invitationGroupId !== invitation.id,
+      );
+    }
     store.invitations = store.invitations.map((item) =>
       item.id === invitation.id ? updatedInvitation : item,
     );
@@ -1188,7 +1429,7 @@ export async function submitTravelPlan(submission: TravelPlanSubmission) {
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    if (!supabase) throw new Error("Supabase is not configured.");
+    if (!supabase) throw new Error("Supabase client unavailable");
     const { data, error } = await supabase
       .from("travel_plans")
       .upsert(
@@ -1232,24 +1473,46 @@ export async function getAdminSnapshot(): Promise<AdminSnapshot> {
   const invitations = await getInvitations();
   const history = await getHistory();
   const messageLogs = await getAdminMessageLogs();
+
+  // B7: compute distinct invite-open count from events table when Supabase is available
+  let distinctOpenCount: number | undefined;
+  if (isSupabaseConfigured()) {
+    const supabase = createSupabaseServiceClient();
+    if (supabase) {
+      const { data: openData, error: openError } = await supabase
+        .from("invite_open_events")
+        .select("invitation_group_id");
+      if (!openError && openData) {
+        const uniqueGroupIds = new Set(
+          openData
+            .map((row: { invitation_group_id: string }) => row.invitation_group_id)
+            .filter(Boolean),
+        );
+        distinctOpenCount = uniqueGroupIds.size;
+      }
+    }
+  }
+
   return {
     content,
     invitations,
     history,
     messageLogs,
-    stats: calculateStats(invitations, history),
+    stats: calculateStats(invitations, history, distinctOpenCount),
   };
 }
 
 export async function getInvitations(): Promise<InvitationGroup[]> {
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } =
-      (await supabase
-        ?.from("invitation_groups")
-        .select("*,rsvps(*),guests(*)")
-        .order("group_name")) || {};
-    if (data) return data.map(mapInvitationRow);
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B2: throw on query error — do NOT fall through to preview store
+    const { data, error } = await supabase
+      .from("invitation_groups")
+      .select("*,rsvps(*),guests(*)")
+      .order("group_name");
+    if (error) throw new Error(error.message);
+    return data.map(mapInvitationRow);
   }
   return clone(previewStore().invitations);
 }
@@ -1257,22 +1520,22 @@ export async function getInvitations(): Promise<InvitationGroup[]> {
 export async function getHistory(): Promise<RsvpHistoryItem[]> {
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } =
-      (await supabase
-        ?.from("rsvp_history")
-        .select("id,invitation_group_id,status,changed_by,changed_at,snapshot")
-        .order("changed_at", { ascending: false })
-        .limit(100)) || {};
-    if (data) {
-      return data.map((item) => ({
-        id: String(item.id),
-        invitationGroupId: String(item.invitation_group_id),
-        status: item.status as RsvpHistoryItem["status"],
-        changedBy: item.changed_by as RsvpHistoryItem["changedBy"],
-        changedAt: String(item.changed_at),
-        snapshot: item.snapshot,
-      }));
-    }
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B2: throw on query error — do NOT fall through to preview store
+    const { data, error } = await supabase
+      .from("rsvp_history")
+      .select("id,invitation_group_id,status,changed_by,changed_at,snapshot")
+      .order("changed_at", { ascending: false })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    return data.map((item) => ({
+      id: String(item.id),
+      invitationGroupId: String(item.invitation_group_id),
+      status: item.status as RsvpHistoryItem["status"],
+      changedBy: item.changed_by as RsvpHistoryItem["changedBy"],
+      changedAt: String(item.changed_at),
+      snapshot: item.snapshot,
+    }));
   }
   return clone(previewStore().history);
 }
@@ -1280,15 +1543,17 @@ export async function getHistory(): Promise<RsvpHistoryItem[]> {
 export async function getAdminMessageLogs(): Promise<AdminMessageLog[]> {
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } =
-      (await supabase
-        ?.from("admin_message_logs")
-        .select(
-          "id,invitation_group_id,channel,message_type,recipient,message_preview,sent_at,sent_by",
-        )
-        .order("sent_at", { ascending: false })
-        .limit(300)) || {};
-    if (data) return data.map(mapAdminMessageLogRow);
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B2: throw on query error — do NOT fall through to preview store
+    const { data, error } = await supabase
+      .from("admin_message_logs")
+      .select(
+        "id,invitation_group_id,channel,message_type,recipient,message_preview,sent_at,sent_by",
+      )
+      .order("sent_at", { ascending: false })
+      .limit(300);
+    if (error) throw new Error(error.message);
+    return data.map(mapAdminMessageLogRow);
   }
   return clone(previewStore().messageLogs);
 }
@@ -1321,7 +1586,7 @@ export async function recordAdminWhatsAppMessage({
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    if (!supabase) throw new Error("Supabase is not configured.");
+    if (!supabase) throw new Error("Supabase client unavailable");
     const { data, error } = await supabase
       .from("admin_message_logs")
       .insert({
@@ -1391,9 +1656,13 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
     created.push(group);
   }
 
+  // B14/F5: collect per-row failures so the caller can surface partial-success details.
+  const rowErrors: Array<{ groupName: string; message: string }> = [];
+
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    if (!supabase) throw new Error("Supabase is not configured.");
+    if (!supabase) throw new Error("Supabase client unavailable");
+
     for (const group of created) {
       const groupInsert = {
         code: group.code,
@@ -1413,6 +1682,11 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
         .select("id")
         .single();
       if (error && missingFlowColumn(error)) {
+        // B8: log loudly when missing columns
+        console.error(
+          "[upsertInvitationFromCsvRows] WARNING: flow/max_guests columns appear missing. " +
+            "Schema migration is required. Retrying without these columns.",
+        );
         const { max_guests, ...legacyGroupInsert } = groupInsert;
         const retry = await supabase
           .from("invitation_groups")
@@ -1422,8 +1696,40 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
         insertedGroup = retry.data;
         error = retry.error;
       }
-      if (error || !insertedGroup?.id)
-        throw new Error(error?.message || "Unable to create invitation group.");
+      if (error) {
+        // B6: on code unique-violation, retry with suffix
+        if (error.code === "23505") {
+          let retried: typeof insertedGroup = null;
+          let retryError: typeof error | null = error;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            const suffixedCode = `${group.code}-${attempt}`;
+            const retryResult = await supabase
+              .from("invitation_groups")
+              .insert({ ...groupInsert, code: suffixedCode, flow: group.flow })
+              .select("id")
+              .single();
+            retried = retryResult.data;
+            retryError = retryResult.error;
+            if (!retryError) {
+              group.code = suffixedCode;
+              break;
+            }
+          }
+          if (retryError || !retried?.id) {
+            rowErrors.push({ groupName: group.groupName, message: `Code collision: ${retryError?.message || "unknown"}` });
+            continue;
+          }
+          insertedGroup = retried;
+        } else {
+          rowErrors.push({ groupName: group.groupName, message: error.message });
+          continue;
+        }
+      }
+      if (!insertedGroup?.id) {
+        rowErrors.push({ groupName: group.groupName, message: "No id returned after group insert." });
+        continue;
+      }
+
       group.id = String(insertedGroup.id);
       group.rsvp.invitationGroupId = group.id;
       group.guests = group.guests.map((guest) => ({
@@ -1431,24 +1737,40 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
         invitationGroupId: group.id,
       }));
 
-      await supabase?.from("rsvps").insert({
+      // B1 + B14: check RSVP insert error; on failure, best-effort delete orphan group
+      const { error: rsvpError } = await supabase.from("rsvps").insert({
         invitation_group_id: group.id,
         status: "pending",
         event_attendance: {},
       });
-      await supabase?.from("guests").insert(
+      if (rsvpError) {
+        rowErrors.push({ groupName: group.groupName, message: `RSVP insert failed: ${rsvpError.message}` });
+        // Best-effort cleanup of orphan group
+        await supabase.from("invitation_groups").delete().eq("id", group.id).then(() => {});
+        continue;
+      }
+
+      // B1 + B14: check guest insert error
+      const { error: guestsError } = await supabase.from("guests").insert(
         group.guests.map((guest) => ({
           invitation_group_id: group.id,
           name: guest.name,
           meal_preference: guest.mealPreference,
         })),
       );
+      if (guestsError) {
+        rowErrors.push({ groupName: group.groupName, message: `Guests insert failed: ${guestsError.message}` });
+        continue;
+      }
     }
+
   } else {
     previewStore().invitations.unshift(...created);
   }
 
-  return created;
+  // B14/F5: return rowErrors alongside created instead of throwing, so the API
+  // can distinguish partial success and return both the snapshot and error details.
+  return { created, rowErrors };
 }
 
 export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
@@ -1460,7 +1782,7 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    if (!supabase) throw new Error("Supabase is not configured.");
+    if (!supabase) throw new Error("Supabase client unavailable");
 
     let invitationId = existing?.id;
     let code =
@@ -1488,6 +1810,11 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
         .update({ ...groupUpdate, flow: normalized.flow })
         .eq("id", existing.id);
       if (error && missingFlowColumn(error)) {
+        // B8: log loudly when missing columns
+        console.error(
+          "[upsertInvitationByAdmin] WARNING: flow/max_guests columns appear missing from invitation_groups. " +
+            "Schema migration is required. Retrying without these columns.",
+        );
         const { max_guests, ...legacyGroupUpdate } = groupUpdate;
         const retry = await supabase
           .from("invitation_groups")
@@ -1518,6 +1845,11 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
         .select("id,code")
         .single();
       if (error && missingFlowColumn(error)) {
+        // B8: log loudly when missing columns
+        console.error(
+          "[upsertInvitationByAdmin] WARNING: flow/max_guests columns appear missing from invitation_groups. " +
+            "Schema migration is required. Retrying without these columns.",
+        );
         const { max_guests, ...legacyGroupInsert } = groupInsert;
         const retry = await supabase
           .from("invitation_groups")
@@ -1666,11 +1998,12 @@ export async function deleteInvitationByAdmin(code: string) {
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { error } =
-      (await supabase
-        ?.from("invitation_groups")
-        .delete()
-        .eq("code", normalizedCode)) || {};
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B1: check delete error
+    const { error } = await supabase
+      .from("invitation_groups")
+      .delete()
+      .eq("code", normalizedCode);
     if (error) throw new Error(error.message);
     return;
   }
@@ -1695,18 +2028,19 @@ export async function addMediaAsset(
 ) {
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data, error } =
-      (await supabase
-        ?.from("media_assets")
-        .insert({
-          kind: asset.kind,
-          url: asset.url,
-          alt: asset.alt,
-          sort_order: asset.sortOrder,
-          is_published: asset.isPublished,
-        })
-        .select("id")
-        .single()) || {};
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B1: check media insert error
+    const { data, error } = await supabase
+      .from("media_assets")
+      .insert({
+        kind: asset.kind,
+        url: asset.url,
+        alt: asset.alt,
+        sort_order: asset.sortOrder,
+        is_published: asset.isPublished,
+      })
+      .select("id")
+      .single();
     if (error) throw new Error(error.message);
     if (data?.id) asset.id = String(data.id);
   }
@@ -1836,7 +2170,10 @@ export async function removeMediaAssetFromDraft(
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    await supabase?.from("media_assets").delete().eq("url", url);
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B1: check delete error
+    const { error } = await supabase.from("media_assets").delete().eq("url", url);
+    if (error) throw new Error(error.message);
   }
 
   await saveDraftContent(updatedContent);
@@ -1955,9 +2292,14 @@ function applyMediaToContent(
     ].sort((a, b) => a.sortOrder - b.sortOrder),
   };
 }
+// B7: inviteOpenCount is the authoritative COUNT(DISTINCT invitation_group_id)
+// from invite_open_events, passed by getAdminSnapshot when Supabase is available.
+// In preview mode (no Supabase) it is undefined, so we fall back to the in-memory
+// openedAt flag on each invitation object.
 export function calculateStats(
   invitations: InvitationGroup[],
   history: RsvpHistoryItem[] = [],
+  inviteOpenCount?: number,
 ): DashboardStats {
   const totalInvitedPeople = invitations.reduce(
     (sum, invitation) => sum + invitation.guests.length,
@@ -1984,14 +2326,19 @@ export function calculateStats(
       { vegetarianMeals: 0, nonVegetarianMeals: 0 },
     );
   const completed = invitations.length - pendingInvitations;
+  // B7: prefer the authoritative distinct-open count; fall back to in-memory flag.
+  // The old `|| history.length` fallback used an unrelated number — removed.
+  const inviteOpens =
+    inviteOpenCount !== undefined
+      ? inviteOpenCount
+      : invitations.filter((item) => item.openedAt).length;
   return {
     totalInvitedPeople,
     totalInvitations: invitations.length,
     attendingInvitations,
     declinedInvitations,
     pendingInvitations,
-    inviteOpens:
-      invitations.filter((item) => item.openedAt).length || history.length,
+    inviteOpens,
     rsvpCompletionRate: invitations.length
       ? Math.round((completed / invitations.length) * 100)
       : 0,
@@ -2064,8 +2411,12 @@ function mapAdminMessageLogRow(row: any): AdminMessageLog {
 async function getExistingInvitationCodes() {
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
-    const { data } =
-      (await supabase?.from("invitation_groups").select("code")) || {};
+    if (!supabase) throw new Error("Supabase client unavailable");
+    // B2: throw on query error — do NOT silently fall back to preview data
+    const { data, error } = await supabase
+      .from("invitation_groups")
+      .select("code");
+    if (error) throw new Error(error.message);
     return data?.map((row) => String(row.code)) || [];
   }
   return previewStore().invitations.map((invitation) => invitation.code);

@@ -80,7 +80,9 @@ export function GuestMusicProvider({ children }: { children: ReactNode }) {
         setIsPlaying(true);
       })
       .catch(() => {
-        removeStoredValue(MUSIC_ENABLED_KEY);
+        // E2-3: do NOT remove the stored enabled flag when autoplay is blocked —
+        // the user may have previously enabled music and the browser is just
+        // preventing auto-start. Keep the flag so the next user gesture resumes.
         setIsPlaying(false);
       });
   }, [src]);
@@ -120,10 +122,17 @@ export function GuestMusicProvider({ children }: { children: ReactNode }) {
           onLoadedMetadata={(event) => {
             const storedTime = Number(getStoredValue(MUSIC_TIME_KEY));
             const audio = event.currentTarget;
+            // E2-4: if the stored position is within 5 s of the end (or beyond),
+            // restart from 0 so the track doesn't freeze near completion.
+            const tooNearEnd =
+              Number.isFinite(audio.duration) &&
+              audio.duration > 0 &&
+              storedTime >= audio.duration - 5;
             if (
               Number.isFinite(storedTime) &&
               storedTime > 0 &&
-              storedTime < audio.duration
+              storedTime < audio.duration &&
+              !tooNearEnd
             ) {
               audio.currentTime = storedTime;
             }

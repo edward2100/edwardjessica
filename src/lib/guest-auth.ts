@@ -11,12 +11,17 @@ export type GuestAuthSession = {
 };
 
 function signingSecret() {
-  return (
-    process.env.GUEST_AUTH_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    "edward-jessica-local-guest-auth"
-  );
+  // A1: Never use a public/client-side env var for the HMAC key.
+  // Order: dedicated secret > service-role key (server-only, acceptable).
+  // The hardcoded local fallback is ONLY allowed outside production so local
+  // development works without env setup. In production both secrets being absent
+  // is a misconfiguration — throw rather than silently using a guessable key.
+  if (process.env.GUEST_AUTH_SECRET) return process.env.GUEST_AUTH_SECRET;
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) return process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("GUEST_AUTH_SECRET is not configured");
+  }
+  return "edward-jessica-local-guest-auth";
 }
 
 export function normalizeGuestEmail(email: string) {
@@ -56,6 +61,12 @@ function decodeSession(value: string | undefined): GuestAuthSession | null {
       Buffer.from(payload, "base64url").toString("utf8"),
     ) as GuestAuthSession;
     if (!parsed.email || !parsed.verifiedAt) return null;
+    // A2: Enforce server-side session expiry — reject sessions older than
+    // COOKIE_MAX_AGE_SECONDS (60 days) even if the cookie was somehow kept longer.
+    const verifiedAt = new Date(parsed.verifiedAt).getTime();
+    if (isNaN(verifiedAt)) return null;
+    const ageSeconds = (Date.now() - verifiedAt) / 1000;
+    if (ageSeconds > COOKIE_MAX_AGE_SECONDS) return null;
     return {
       email: normalizeGuestEmail(parsed.email),
       verifiedAt: parsed.verifiedAt,

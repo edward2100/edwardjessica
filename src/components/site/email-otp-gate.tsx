@@ -42,42 +42,60 @@ export function EmailOtpGate({
     setLoading("send");
     setNotice("");
     setDevCode("");
-    const response = await fetch("/api/guest-auth/send-otp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, code }),
-    });
-    const json = (await response.json()) as {
-      error?: string;
-      devCode?: string;
-    };
-    setLoading("");
-    if (!response.ok) {
-      setNotice(json.error || c.unableToSaveRsvp);
-      return;
+    try {
+      const response = await fetch("/api/guest-auth/send-otp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, code }),
+      });
+      const json = (await response.json()) as {
+        error?: string;
+        devCode?: string;
+      };
+      setLoading("");
+      if (!response.ok) {
+        setNotice(json.error || c.unableToSaveRsvp);
+        return;
+      }
+      setSent(true);
+      setDevCode(json.devCode || "");
+      setNotice(c.otpSent);
+    } catch {
+      setLoading("");
+      setNotice(
+        language === "id"
+          ? "Terjadi kesalahan jaringan. Mohon coba lagi."
+          : "A network error occurred. Please try again.",
+      );
     }
-    setSent(true);
-    setDevCode(json.devCode || "");
-    setNotice(c.otpSent);
   }
 
   async function verifyCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading("verify");
     setNotice("");
-    const response = await fetch("/api/guest-auth/verify", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, token, code }),
-    });
-    const json = (await response.json()) as { error?: string; email?: string };
-    setLoading("");
-    if (!response.ok || !json.email) {
-      setNotice(json.error || c.unableToSaveRsvp);
-      return;
+    try {
+      const response = await fetch("/api/guest-auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, token, code }),
+      });
+      const json = (await response.json()) as { error?: string; email?: string };
+      setLoading("");
+      if (!response.ok || !json.email) {
+        setNotice(json.error || c.unableToSaveRsvp);
+        return;
+      }
+      setNotice(c.otpVerified);
+      onVerified(json.email);
+    } catch {
+      setLoading("");
+      setNotice(
+        language === "id"
+          ? "Terjadi kesalahan jaringan. Mohon coba lagi."
+          : "A network error occurred. Please try again.",
+      );
     }
-    setNotice(c.otpVerified);
-    onVerified(json.email);
   }
 
   return (
