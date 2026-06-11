@@ -210,9 +210,12 @@ async function compressImageInBrowser(
   if (!context) throw new Error("Unable to optimize this image.");
   context.drawImage(image, 0, 0, width, height);
 
+  // Higher starting quality so the browser pre-pass barely compresses; the
+  // server (sharp) does the final encode. Falls to lower steps only if the
+  // file would exceed the upload limit. Reduces double-compression artifacts.
   const qualities = kind === "hero" || slot === "hero"
-    ? [0.78, 0.68, 0.58]
-    : [0.76, 0.66, 0.56];
+    ? [0.92, 0.85, 0.76]
+    : [0.9, 0.82, 0.74];
 
   // Try WebP first (smaller files); fall back to JPEG which is universally supported.
   let bestBlob: Blob | null = null;

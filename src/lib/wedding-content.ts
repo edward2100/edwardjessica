@@ -180,13 +180,13 @@ export const weddingContent: WeddingContent = {
       },
       date: EVENT_DATE,
       startTime: "09:30",
-      venueName: "Vihara BLIA",
-      venueAddress: "Vihara BLIA",
+      venueName: "Vihara Sinar Buddha (BLIA) 印尼棉蘭佛光寺",
+      venueAddress: "Vihara Sinar Buddha (BLIA) 印尼棉蘭佛光寺",
       note: {
-        en: "Socks are required at the venue.",
-        id: "Kaus kaki diwajibkan di lokasi acara.",
+        en: "Dress code: socks are required at the venue.",
+        id: "Aturan berpakaian: kaus kaki diwajibkan di lokasi acara.",
       },
-      // mapUrl intentionally empty until Edward fills it in
+      mapUrl: "https://maps.app.goo.gl/D6tQ235KKhddTEnN6?g_st=ic",
     },
     {
       key: "tea_lunch",
@@ -196,7 +196,7 @@ export const weddingContent: WeddingContent = {
       },
       shortTitle: { en: "Lunch Buffet", id: "Lunch Buffet" },
       date: EVENT_DATE,
-      startTime: "13:30",
+      startTime: "12:30",
       venueName: "D’Heritage - Grand City Hall Medan",
       venueAddress:
         "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia",
@@ -212,8 +212,8 @@ export const weddingContent: WeddingContent = {
       venueAddress:
         "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia",
       note: {
-        en: "Guest arrival starts at 6:30 PM; dinner begins at 7:00 PM.",
-        id: "Kedatangan tamu mulai pukul 18.30; makan malam dimulai pukul 19.00.",
+        en: "Dress code: semi formal.",
+        id: "Aturan berpakaian: semi formal.",
       },
       mapUrl: "https://maps.app.goo.gl/hPL5x2kPToUaAK946",
     },

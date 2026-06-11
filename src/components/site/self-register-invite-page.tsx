@@ -384,40 +384,44 @@ export function SelfRegisterInvitePage({
             </div>
           ) : (
             <>
-              <div className="rsvp-callout">
-                <div>
-                  <p className="eyebrow">{c.registerRsvp}</p>
-                  <h2
-                    className="serif"
-                    style={{
-                      fontSize: "clamp(2.2rem, 6vw, 5rem)",
-                      lineHeight: 0.95,
-                    }}
-                  >
-                    {savedInvitation && !rsvpJustSaved ? c.rsvpSavedTitle : c.readyToRsvp}
-                  </h2>
-                  <p className="muted" style={{ marginTop: 14 }}>
-                    {savedInvitation && !rsvpJustSaved
-                      ? c.receivedRsvp
-                      : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
-                  </p>
-                  {/* Countdown line */}
-                  <SelfRegRsvpCountdownLine
-                    deadlineIso={content.rsvpDeadline}
-                    language={language}
-                  />
+              {/* Hide the "Ready to confirm?" callout once the RSVP is
+                  confirmed — the success card below replaces it. */}
+              {!rsvpJustSaved ? (
+                <div className="rsvp-callout">
+                  <div>
+                    <p className="eyebrow">{c.registerRsvp}</p>
+                    <h2
+                      className="serif"
+                      style={{
+                        fontSize: "clamp(2.2rem, 6vw, 5rem)",
+                        lineHeight: 0.95,
+                      }}
+                    >
+                      {savedInvitation ? c.rsvpSavedTitle : c.readyToRsvp}
+                    </h2>
+                    <p className="muted" style={{ marginTop: 14 }}>
+                      {savedInvitation
+                        ? c.receivedRsvp
+                        : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
+                    </p>
+                    {/* Countdown line */}
+                    <SelfRegRsvpCountdownLine
+                      deadlineIso={content.rsvpDeadline}
+                      language={language}
+                    />
+                  </div>
+                  {savedInvitation ? null : (
+                    <button
+                      className="button button-primary rsvp-main-button"
+                      type="button"
+                      onClick={revealForm}
+                    >
+                      <Users size={18} />
+                      {c.registerRsvp}
+                    </button>
+                  )}
                 </div>
-                {savedInvitation && !rsvpJustSaved ? null : (
-                  <button
-                    className="button button-primary rsvp-main-button"
-                    type="button"
-                    onClick={revealForm}
-                  >
-                    <Users size={18} />
-                    {c.registerRsvp}
-                  </button>
-                )}
-              </div>
+              ) : null}
 
               {/* Success card shown immediately after registration */}
               {rsvpJustSaved && savedInvitation ? (
@@ -452,8 +456,9 @@ export function SelfRegisterInvitePage({
                   style={{ marginTop: 24 }}
                 >
                   <div>
+                    {/* Heading lives in the OTP box on the right; keep only the
+                        eyebrow + guest-count note here to avoid duplication. */}
                     <p className="eyebrow">{c.registerRsvp}</p>
-                    <h2 className="title serif">{c.tellUsWhoIsComing}</h2>
                     <p className="muted" style={{ marginTop: 14 }}>
                       {c.guestCountHint.replace(
                         "{count}",

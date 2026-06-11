@@ -43,8 +43,10 @@ export async function compressWeddingImage(
       fit: "inside",
     })
     .webp({
-      quality: options.kind === "hero" ? 78 : 76,
-      effort: 5,
+      // Higher quality (less compression) for sharper photos. effort 6 keeps
+      // file size in check at the higher quality (slower encode, server-side).
+      quality: options.kind === "hero" ? 90 : 86,
+      effort: 6,
       smartSubsample: true,
     })
     .toBuffer();

@@ -307,6 +307,7 @@ export function TravelAccommodationPage({
                 plan={submittedPlan}
                 language={language}
                 onEdit={() => setEditingTravel(true)}
+                discoverHref={activeDiscoverHref}
                 ci={ci}
               />
             ) : (
@@ -340,11 +341,13 @@ function TravelSubmittedCard({
   plan,
   language,
   onEdit,
+  discoverHref,
   ci,
 }: {
   plan: TravelPlan;
   language: Language;
   onEdit: () => void;
+  discoverHref: string;
   ci: (typeof copy)[Language];
 }) {
   return (
@@ -383,14 +386,25 @@ function TravelSubmittedCard({
           </div>
         ) : null}
       </dl>
-      <button
-        className="button button-brown"
-        type="button"
-        onClick={onEdit}
-        style={{ marginTop: 16 }}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          marginTop: 16,
+        }}
       >
-        {ci.updateTravelPlans}
-      </button>
+        <button
+          className="button button-brown"
+          type="button"
+          onClick={onEdit}
+        >
+          {ci.updateTravelPlans}
+        </button>
+        <Link className="button button-primary" href={discoverHref as Route}>
+          {ci.medanGuide}
+        </Link>
+      </div>
     </div>
   );
 }

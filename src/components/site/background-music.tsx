@@ -145,7 +145,11 @@ export function GuestMusicProvider({ children }: { children: ReactNode }) {
             lastStoredSecondRef.current = currentSecond;
             setStoredValue(MUSIC_TIME_KEY, String(currentSecond));
           }}
-          preload="metadata"
+          /* Don't fetch any audio on page load — music only starts after a
+             user gesture. play() calls audio.load() on demand, then the browser
+             streams the file via HTTP range requests (progressive, like a video)
+             instead of downloading it all up front. */
+          preload="none"
           ref={audioRef}
           src={src}
         />

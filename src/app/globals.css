@@ -582,7 +582,10 @@ textarea {
 
 .title {
   margin-top: 8px;
-  font-size: clamp(2rem, 5vw, 4.5rem);
+  /* Smaller desktop scaling (4.2vw / 3.6rem cap) so long section titles like
+     "Snacks & Supper Spots" don't wrap to 3 lines on laptops. Mobile size
+     (min 2rem) is unchanged. */
+  font-size: clamp(2rem, 4.2vw, 3.6rem);
   line-height: 0.95;
   letter-spacing: 0;
 }
@@ -1083,7 +1086,8 @@ textarea {
 }
 
 .discover-card {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   border: 1px solid rgba(173, 131, 84, 0.24);
   border-radius: 8px;
   background:
@@ -1101,6 +1105,17 @@ textarea {
   display: flex;
   gap: 10px;
   padding: clamp(18px, 2.4vw, 26px);
+  flex: 1; /* fill the card so the map link can pin to the bottom */
+}
+
+/* The text column inside each card — a flex column so the map link can be
+   pushed to the bottom (consistent position across all cards regardless of
+   how many lines the note wraps to). */
+.discover-card-body > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .discover-card-image {
@@ -1140,22 +1155,22 @@ textarea {
   min-height: 150px;
 }
 
-/* F6: discover card map link */
+/* F6: discover card map pin — a round icon button on the right side of the
+   card, vertically centred so it sits in the same spot in every box. */
 .discover-card-map-link {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  padding: 3px 10px;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
   border: 1px solid rgba(173, 131, 84, 0.35);
-  border-radius: 99px;
+  border-radius: 999px;
   background: rgba(238, 229, 213, 0.32);
   color: var(--gold);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
   text-decoration: none;
-  text-transform: uppercase;
   transition: background 0.15s, border-color 0.15s;
 }
 

@@ -320,47 +320,52 @@ export function InvitePage({
             </div>
           ) : (
             <>
-              <div className="rsvp-callout">
-                <div>
-                  <p className="eyebrow">{c.rsvp}</p>
-                  <h2
-                    className="serif"
-                    style={{
-                      fontSize: "clamp(2.2rem, 6vw, 5rem)",
-                      lineHeight: 0.95,
-                    }}
-                  >
-                    {currentInvitation.rsvp.status === "pending"
-                      ? c.confirmPresence
-                      : c.rsvpSavedTitle}
-                  </h2>
-                  <p className="muted" style={{ marginTop: 14 }}>
-                    {rsvpMeta}
-                  </p>
-                  {/* Countdown line */}
-                  <RsvpCountdownLine
-                    deadlineIso={content.rsvpDeadline}
-                    language={language}
-                  />
+              {/* Hide the confirm/update callout once the RSVP is confirmed in
+                  this session — the success card below replaces it (it has its
+                  own update action). */}
+              {!rsvpJustSaved ? (
+                <div className="rsvp-callout">
+                  <div>
+                    <p className="eyebrow">{c.rsvp}</p>
+                    <h2
+                      className="serif"
+                      style={{
+                        fontSize: "clamp(2.2rem, 6vw, 5rem)",
+                        lineHeight: 0.95,
+                      }}
+                    >
+                      {currentInvitation.rsvp.status === "pending"
+                        ? c.confirmPresence
+                        : c.rsvpSavedTitle}
+                    </h2>
+                    <p className="muted" style={{ marginTop: 14 }}>
+                      {rsvpMeta}
+                    </p>
+                    {/* Countdown line */}
+                    <RsvpCountdownLine
+                      deadlineIso={content.rsvpDeadline}
+                      language={language}
+                    />
+                  </div>
+                  <div className="rsvp-actions">
+                    <button
+                      className="button button-primary rsvp-main-button"
+                      type="button"
+                      onClick={revealRsvpForm}
+                    >
+                      <Send size={18} />
+                      {currentInvitation.rsvp.status === "pending"
+                        ? c.submitRsvp
+                        : c.updateRsvp}
+                    </button>
+                    {isTravelFlow && currentInvitation.rsvp.status === "attending" ? (
+                      <Link className="button button-brown" href={currentTravelHref as Route}>
+                        {c.submitTravelPlans}
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="rsvp-actions">
-                  <button
-                    className="button button-primary rsvp-main-button"
-                    type="button"
-                    onClick={revealRsvpForm}
-                  >
-                    <Send size={18} />
-                    {currentInvitation.rsvp.status === "pending"
-                      ? c.submitRsvp
-                      : c.updateRsvp}
-                  </button>
-                  {isTravelFlow && currentInvitation.rsvp.status === "attending" ? (
-                    <Link className="button button-brown" href={currentTravelHref as Route}>
-                      {c.submitTravelPlans}
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
+              ) : null}
 
               {/* Success card shown after a save in this session */}
               {rsvpJustSaved ? (
@@ -390,8 +395,9 @@ export function InvitePage({
               {showRsvpForm ? (
                 <div id="rsvp-form" className="rsvp-grid" style={{ marginTop: 24 }}>
                   <div>
+                    {/* Heading lives in the OTP box on the right; keep only the
+                        eyebrow + guest-count note here to avoid duplication. */}
                     <p className="eyebrow">{c.rsvp}</p>
-                    <h2 className="title serif">{c.tellUsWhoIsComing}</h2>
                     <p className="muted" style={{ marginTop: 14 }}>
                       {currentInvitation.maxGuests > currentInvitation.guests.length
                         ? c.guestCountHint.replace(
