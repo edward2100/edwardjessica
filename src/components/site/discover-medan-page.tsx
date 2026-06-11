@@ -2,10 +2,7 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
-import {
-  RegisterBackgroundMusic,
-  useBackgroundMusic,
-} from "@/components/site/background-music";
+import { RegisterBackgroundMusic } from "@/components/site/background-music";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
 import { SlotImage } from "@/components/site/slot-image";
@@ -40,16 +37,10 @@ export function DiscoverMedanPage({
     if (typeof window === "undefined") return content.defaultLanguage;
     return getStoredLanguage() ?? content.defaultLanguage;
   });
-  const music = useBackgroundMusic();
   const guideRef = useRef<HTMLElement | null>(null);
   const c = content.discoverMedan;
   const activeFlow = invitation?.flow || flow;
   const activeCode = invitation?.code;
-
-  function scrollToGuide() {
-    music.play();
-    guideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 
   return (
     <main className="app-shell discover-page">
@@ -87,16 +78,6 @@ export function DiscoverMedanPage({
             {/* F5: page title is "Discover Medan" as a proper noun in both languages */}
             <h1 className="hero-title serif">Discover Medan</h1>
             <p className="hero-meta">{c.heroSubtitle[language]}</p>
-            <div className="hero-actions travel-hero-actions">
-              <button
-                className="button button-primary hero-open-button"
-                type="button"
-                onClick={scrollToGuide}
-                onPointerDown={music.play}
-              >
-                {c.heroButton[language]}
-              </button>
-            </div>
           </div>
         </div>
       </section>

@@ -5,10 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import {
-  RegisterBackgroundMusic,
-  useBackgroundMusic,
-} from "@/components/site/background-music";
+import { RegisterBackgroundMusic } from "@/components/site/background-music";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
 import { SlotImage } from "@/components/site/slot-image";
@@ -91,7 +88,6 @@ export function TravelAccommodationPage({
     return getStoredLanguage() ?? content.defaultLanguage;
   });
   const router = useRouter();
-  const music = useBackgroundMusic();
   const detailsRef = useRef<HTMLElement | null>(null);
   const c = travelPageCopy[language];
   const ci = copy[language];
@@ -166,10 +162,6 @@ export function TravelAccommodationPage({
     }
   }, [activeFlow, invitation, isTravelFlow, requestedCode, router]);
 
-  function scrollToDetails() {
-    music.play();
-    detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 
   return (
     <main className="app-shell travel-page">
@@ -199,16 +191,6 @@ export function TravelAccommodationPage({
             ) : null}
             <h1 className="hero-title serif">{c.heroTitle}</h1>
             <p className="hero-meta">{c.heroSubtitle}</p>
-            <div className="hero-actions travel-hero-actions">
-              <button
-                className="button button-primary hero-open-button"
-                type="button"
-                onClick={scrollToDetails}
-                onPointerDown={music.play}
-              >
-                {c.viewDetails}
-              </button>
-            </div>
           </div>
         </div>
       </section>
