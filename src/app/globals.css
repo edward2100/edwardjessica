@@ -53,6 +53,21 @@ textarea {
   min-height: 100vh;
 }
 
+/* F3: standard page-width shell for all guest content sections.
+   Full-bleed exceptions (hero) sit outside this wrapper.
+   Use on every content section: text AND framed images alike. */
+.page-shell {
+  max-width: 52rem;
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 5vw, 2rem);
+}
+
+/* Frame utility classes used by SlotImage and direct callers.
+   aspect-ratio values match FRAME_RATIOS in image-crop.ts. */
+.frame-square  { aspect-ratio: 1 / 1; }
+.frame-portrait { aspect-ratio: 4 / 5; }
+.frame-landscape { aspect-ratio: 3 / 2; }
+
 .app-shell.hero-locked {
   height: 100svh;
   overflow: hidden;
@@ -751,7 +766,7 @@ textarea {
 .travel-hero-inner {
   display: grid;
   justify-items: start;
-  width: min(980px, 100%);
+  width: 100%;
   text-align: left;
 }
 
@@ -775,14 +790,12 @@ textarea {
 
 .travel-hero-actions {
   justify-content: center;
-  width: min(980px, calc(100vw - 48px));
+  width: 100%;
 }
 
 .travel-section-stack {
   display: grid;
-  max-width: 980px;
   gap: clamp(54px, 7vw, 92px);
-  margin: 0 auto;
 }
 
 .travel-detail-section {
@@ -944,6 +957,41 @@ textarea {
     rgba(255, 255, 255, 0.72);
 }
 
+/* B1: Travel submitted confirmation card */
+.travel-submitted-card {
+  text-align: left;
+}
+
+.travel-submitted-icon {
+  color: var(--gold);
+}
+
+.travel-submitted-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: rgba(238, 229, 213, 0.38);
+  border-radius: 8px;
+}
+
+.travel-submitted-row {
+  display: grid;
+  gap: 3px;
+}
+
+.travel-submitted-row dt {
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.travel-submitted-row dd {
+  font-size: 0.94rem;
+  color: var(--ink);
+}
+
 .medan-guide-panel {
   display: grid;
   gap: 8px;
@@ -1077,14 +1125,35 @@ textarea {
   line-height: 1.62;
 }
 
-.discover-supper .discover-card-grid,
-.discover-cafe .discover-card-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
+/* Supper & cafe cards have no image, so give them a little body height.
+   They share the base 2-column grid with the Local Food section. */
 .discover-supper .discover-card,
 .discover-cafe .discover-card {
   min-height: 150px;
+}
+
+/* F6: discover card map link */
+.discover-card-map-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 3px 10px;
+  border: 1px solid rgba(173, 131, 84, 0.35);
+  border-radius: 99px;
+  background: rgba(238, 229, 213, 0.32);
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.discover-card-map-link:hover {
+  background: rgba(173, 131, 84, 0.14);
+  border-color: rgba(173, 131, 84, 0.56);
 }
 
 .confirmation-actions {
@@ -1183,10 +1252,10 @@ textarea {
 }
 
 .rsvp-callout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 28px;
-  align-items: center;
   border: 1px solid rgba(173, 131, 84, 0.28);
   border-radius: 8px;
   padding: clamp(28px, 5vw, 56px);
@@ -1212,7 +1281,7 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .choice-row,
@@ -1571,11 +1640,6 @@ textarea {
     aspect-ratio: 4 / 3;
   }
 
-  .discover-supper .discover-card-grid,
-  .discover-cafe .discover-card-grid {
-    grid-template-columns: 1fr;
-  }
-
   .event-row {
     grid-template-columns: 1fr;
   }
@@ -1608,6 +1672,11 @@ textarea {
 
   .invitation-map-copy {
     justify-items: center;
+  }
+
+  /* B1: travel submitted card responsive tweaks */
+  .travel-submitted-details {
+    grid-template-columns: 1fr;
   }
 
   .story-message,

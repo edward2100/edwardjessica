@@ -24,7 +24,7 @@ const menuLabels = {
     close: "Tutup menu",
     invitation: "Undangan",
     travel: "Perjalanan & Akomodasi",
-    discover: "Jelajahi Medan",
+    discover: "Discover Medan",
   },
 } as const;
 

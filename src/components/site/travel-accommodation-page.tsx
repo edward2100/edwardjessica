@@ -1,11 +1,9 @@
 "use client";
 
 import { CheckCircle2, LockKeyhole, Send } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
-import type { CSSProperties } from "react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   RegisterBackgroundMusic,
@@ -13,6 +11,7 @@ import {
 } from "@/components/site/background-music";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { SlotImage } from "@/components/site/slot-image";
 import {
   discoverMedanHref,
   invitationHref,
@@ -20,18 +19,52 @@ import {
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
 import { travelPageCopy } from "@/lib/guest-page-copy";
-import { imageCropStyleVars } from "@/lib/image-crop";
+import { copy } from "@/lib/i18n";
 import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import type {
   InvitationGroup,
   Language,
   PublicInviteFlow,
   TravelAccommodationOption,
+  TravelPlan,
   WeddingContent,
 } from "@/lib/types";
 
 function inviteSessionKey(flow: PublicInviteFlow) {
   return `edward-jessica-${flow}-invite-code`;
+}
+
+/** Format an ISO datetime string in Asia/Jakarta timezone to a readable form. */
+function formatJakartaDate(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Asia/Jakarta",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+/** Convert a TravelAccommodationOption to a readable label. */
+function accommodationLabel(
+  option: TravelAccommodationOption,
+  language: Language,
+): string {
+  if (option === "specific_roommates") {
+    return language === "id"
+      ? "Sekamar dengan tamu tertentu"
+      : "Specific roommates";
+  }
+  if (option === "own_accommodation") {
+    return language === "id"
+      ? "Akomodasi sendiri"
+      : "Own accommodation";
+  }
+  return language === "id"
+    ? "Teman sekamar ditentukan pasangan"
+    : "Assigned by couple";
 }
 
 export function TravelAccommodationPage({
@@ -40,6 +73,7 @@ export function TravelAccommodationPage({
   invitation,
   requestedCode,
   codeFoundButWrongFlow,
+  existingTravelPlan,
 }: {
   content: WeddingContent;
   flow: PublicInviteFlow;
@@ -48,6 +82,8 @@ export function TravelAccommodationPage({
   /** E2-5: true when code is valid but the guest's invitation is not an
    *  overseas/family flow — show a "not applicable" notice instead of the form. */
   codeFoundButWrongFlow?: boolean;
+  /** B1: pre-existing travel plan for this invitation, passed by the route page. */
+  existingTravelPlan?: TravelPlan | null;
 }) {
   // E2-9: initialise language from localStorage; guard for SSR with typeof-window check.
   const [language, setLanguage] = useState<Language>(() => {
@@ -58,6 +94,7 @@ export function TravelAccommodationPage({
   const music = useBackgroundMusic();
   const detailsRef = useRef<HTMLElement | null>(null);
   const c = travelPageCopy[language];
+  const ci = copy[language];
   // E2-5: when wrong-flow, use the invitation's code/flow for nav links but
   // treat the page as non-travel so the form stays locked.
   const activeFlow = invitation?.flow || flow;
@@ -73,6 +110,15 @@ export function TravelAccommodationPage({
   // show "invalid code" only for genuinely unknown codes.
   const showNotApplicable = Boolean(codeFoundButWrongFlow);
   const showInvalidCode = Boolean(requestedCode && !invitation && !codeFoundButWrongFlow);
+
+  // B1: track whether the form is currently being edited
+  const [editingTravel, setEditingTravel] = useState(false);
+  // B1: after a successful submit the new plan is stored here
+  const [submittedPlan, setSubmittedPlan] = useState<TravelPlan | null>(
+    existingTravelPlan ?? null,
+  );
+
+  const showSubmittedCard = Boolean(submittedPlan) && !editingTravel;
 
   function handleLanguageChange(lang: Language) {
     setLanguage(lang);
@@ -136,18 +182,12 @@ export function TravelAccommodationPage({
       />
       <RegisterBackgroundMusic src={content.musicUrl} />
       <section className="hero travel-hero">
-        <Image
-          className="hero-image"
-          src={
-            content.travelHeroImageUrl ||
-            content.invitationImageUrl ||
-            content.heroImageUrl
-          }
+        <SlotImage
+          content={content}
+          slot="travelHero"
           alt=""
-          fill
+          className="hero-image"
           priority
-          sizes="100vw"
-          style={imageCropStyleVars(content, "travelHero") as CSSProperties}
         />
         <div className="hero-content travel-hero-content">
           <div className="travel-hero-inner">
@@ -174,7 +214,7 @@ export function TravelAccommodationPage({
       </section>
 
       <section className="section" id="travel-details" ref={detailsRef}>
-        <div className="container travel-section-stack">
+        <div className="page-shell travel-section-stack">
           {showInvalidCode ? (
             <p className="travel-notice">{c.invalidCode}</p>
           ) : null}
@@ -195,20 +235,12 @@ export function TravelAccommodationPage({
                 <p className="eyebrow">{c.arrivalTitle}</p>
                 <p className="muted">{c.airport}</p>
                 {content.travelAirportImageUrl ? (
-                  <figure className="travel-airport-photo">
-                    <Image
-                      src={content.travelAirportImageUrl}
-                      alt=""
-                      fill
-                      sizes="(max-width: 860px) calc(100vw - 104px), 760px"
-                      style={
-                        imageCropStyleVars(
-                          content,
-                          "travelAirport",
-                        ) as CSSProperties
-                      }
-                    />
-                  </figure>
+                  <SlotImage
+                    content={content}
+                    slot="travelAirport"
+                    alt=""
+                    className="travel-airport-photo"
+                  />
                 ) : null}
                 <p className="muted">{c.transport}</p>
               </div>
@@ -239,20 +271,12 @@ export function TravelAccommodationPage({
             <div className="panel travel-copy-panel">
               <p className="muted">{c.accommodation}</p>
               {content.travelAccommodationImageUrl ? (
-                <figure className="travel-accommodation-photo">
-                  <Image
-                    src={content.travelAccommodationImageUrl}
-                    alt=""
-                    fill
-                    sizes="(max-width: 860px) calc(100vw - 104px), 760px"
-                    style={
-                      imageCropStyleVars(
-                        content,
-                        "travelAccommodation",
-                      ) as CSSProperties
-                    }
-                  />
-                </figure>
+                <SlotImage
+                  content={content}
+                  slot="travelAccommodation"
+                  alt=""
+                  className="travel-accommodation-photo"
+                />
               ) : null}
               <div>
                 <p>{c.roomsTitle}</p>
@@ -265,38 +289,109 @@ export function TravelAccommodationPage({
           </article>
 
           {content.travelFormImageUrl ? (
-            <figure className="travel-form-section-photo">
-              <Image
-                src={content.travelFormImageUrl}
-                alt=""
-                fill
-                sizes="(max-width: 860px) calc(100vw - 48px), 920px"
-                style={
-                  imageCropStyleVars(content, "travelForm") as CSSProperties
-                }
-              />
-            </figure>
+            <SlotImage
+              content={content}
+              slot="travelForm"
+              alt=""
+              className="travel-form-section-photo"
+            />
           ) : null}
 
           <article className="travel-detail-section" id="travel-form">
             <h2 className="title serif">{c.formTitle}</h2>
             <p className="muted travel-form-intro">{c.formIntro}</p>
-            <TravelPlansForm
-              canSubmitTravel={canSubmitTravel}
-              invitationCode={invitation?.code}
-              language={language}
-              flow={activeFlow}
-              rsvpStatus={invitation?.rsvp.status}
-              rsvpHref={
-                invitation?.code
-                  ? `${activeInvitationHref}#rsvp`
-                  : `${publicInvitationHref(activeFlow)}#rsvp`
-              }
-            />
+
+            {/* B1: submitted state card */}
+            {showSubmittedCard && submittedPlan ? (
+              <TravelSubmittedCard
+                plan={submittedPlan}
+                language={language}
+                onEdit={() => setEditingTravel(true)}
+                ci={ci}
+              />
+            ) : (
+              <TravelPlansForm
+                canSubmitTravel={canSubmitTravel}
+                invitationCode={invitation?.code}
+                language={language}
+                flow={activeFlow}
+                rsvpStatus={invitation?.rsvp.status}
+                rsvpHref={
+                  invitation?.code
+                    ? `${activeInvitationHref}#rsvp`
+                    : `${publicInvitationHref(activeFlow)}#rsvp`
+                }
+                initialPlan={editingTravel ? submittedPlan : null}
+                onSubmitSuccess={(plan) => {
+                  setSubmittedPlan(plan);
+                  setEditingTravel(false);
+                }}
+              />
+            )}
           </article>
         </div>
       </section>
     </main>
+  );
+}
+
+/** B1: Card shown after travel plans have been submitted. */
+function TravelSubmittedCard({
+  plan,
+  language,
+  onEdit,
+  ci,
+}: {
+  plan: TravelPlan;
+  language: Language;
+  onEdit: () => void;
+  ci: (typeof copy)[Language];
+}) {
+  return (
+    <div className="invite-panel travel-form travel-submitted-card">
+      <div className="travel-submitted-icon">
+        <CheckCircle2 size={24} />
+      </div>
+      <p className="eyebrow" style={{ marginTop: 8 }}>
+        {ci.travelSubmittedNote}
+      </p>
+      <dl className="travel-submitted-details">
+        <div className="travel-submitted-row">
+          <dt className="muted">
+            {language === "id" ? "Kedatangan" : "Arrival"}
+          </dt>
+          <dd>{formatJakartaDate(plan.arrivalAt)}</dd>
+        </div>
+        <div className="travel-submitted-row">
+          <dt className="muted">
+            {language === "id" ? "Kepulangan" : "Departure"}
+          </dt>
+          <dd>{formatJakartaDate(plan.departureAt)}</dd>
+        </div>
+        <div className="travel-submitted-row">
+          <dt className="muted">
+            {language === "id" ? "Akomodasi" : "Accommodation"}
+          </dt>
+          <dd>{accommodationLabel(plan.accommodationOption, language)}</dd>
+        </div>
+        {plan.preferredRoommates ? (
+          <div className="travel-submitted-row">
+            <dt className="muted">
+              {language === "id" ? "Teman sekamar" : "Roommates"}
+            </dt>
+            <dd>{plan.preferredRoommates}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <button
+        className="button button-brown"
+        type="button"
+        onClick={onEdit}
+        style={{ marginTop: 16 }}
+      >
+        {ci.updateTravelPlans}
+      </button>
+    </div>
   );
 }
 
@@ -307,6 +402,8 @@ function TravelPlansForm({
   language,
   rsvpStatus,
   rsvpHref,
+  initialPlan,
+  onSubmitSuccess,
 }: {
   canSubmitTravel: boolean;
   flow: PublicInviteFlow;
@@ -314,15 +411,43 @@ function TravelPlansForm({
   language: Language;
   rsvpStatus?: InvitationGroup["rsvp"]["status"];
   rsvpHref: string;
+  /** B1: when editing, pre-fill the form with the existing plan. */
+  initialPlan?: TravelPlan | null;
+  /** B1: callback invoked with the saved plan on successful submit. */
+  onSubmitSuccess?: (plan: TravelPlan) => void;
 }) {
   const c = travelPageCopy[language];
   const isFamilyFlow = flow === "family";
   const isDeclined = rsvpStatus === "declined";
-  const [arrivalAt, setArrivalAt] = useState("");
-  const [departureAt, setDepartureAt] = useState("");
+
+  // B3: local datetime string for an ISO date
+  function isoToLocal(iso?: string): string {
+    if (!iso) return "";
+    try {
+      // Convert ISO to local datetime-local value in Asia/Jakarta
+      const d = new Date(iso);
+      // Format as YYYY-MM-DDTHH:MM in Jakarta time
+      const jakartaStr = d.toLocaleString("sv-SE", { timeZone: "Asia/Jakarta" });
+      // sv-SE gives "YYYY-MM-DD HH:MM:SS" — trim seconds and replace space with T
+      return jakartaStr.slice(0, 16).replace(" ", "T");
+    } catch {
+      return "";
+    }
+  }
+
+  const [arrivalAt, setArrivalAt] = useState(
+    initialPlan ? isoToLocal(initialPlan.arrivalAt) : "",
+  );
+  const [departureAt, setDepartureAt] = useState(
+    initialPlan ? isoToLocal(initialPlan.departureAt) : "",
+  );
   const [accommodationOption, setAccommodationOption] =
-    useState<TravelAccommodationOption>("assign_roommates");
-  const [preferredRoommates, setPreferredRoommates] = useState("");
+    useState<TravelAccommodationOption>(
+      initialPlan?.accommodationOption ?? "assign_roommates",
+    );
+  const [preferredRoommates, setPreferredRoommates] = useState(
+    initialPlan?.preferredRoommates ?? "",
+  );
   const [notice, setNotice] = useState("");
   const [emailWarning, setEmailWarning] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -352,14 +477,20 @@ function TravelPlansForm({
       const json = (await response.json()) as {
         error?: string;
         emailStatus?: "sent" | "failed" | "skipped";
+        travelPlan?: TravelPlan;
       };
       setLoading(false);
       if (!response.ok) {
         setNotice(language === "id" ? c.unable : json.error || c.unable);
         return;
       }
+      // B1: surface the saved plan to the parent via callback
+      if (json.travelPlan && onSubmitSuccess) {
+        onSubmitSuccess(json.travelPlan);
+        return;
+      }
+      // Fallback: no plan returned from API — show inline success message
       setNotice(c.saved);
-      // E2-9 / shared contract: surface email delivery status.
       if (json.emailStatus === "failed" || json.emailStatus === "skipped") {
         setEmailWarning(true);
       }
@@ -406,10 +537,16 @@ function TravelPlansForm({
           className="input"
           disabled={!canSubmitTravel}
           id="travel-arrival"
-          min="2026-12-11T00:00"
+          min="2026-12-01T00:00"
           type="datetime-local"
           value={arrivalAt}
-          onChange={(event) => setArrivalAt(event.target.value)}
+          onChange={(event) => {
+            setArrivalAt(event.target.value);
+            // B3: keep departure min >= arrival
+            if (departureAt && event.target.value && event.target.value > departureAt) {
+              setDepartureAt(event.target.value);
+            }
+          }}
           required
         />
       </label>
@@ -420,7 +557,7 @@ function TravelPlansForm({
           className="input"
           disabled={!canSubmitTravel}
           id="travel-departure"
-          min="2026-12-11T00:00"
+          min={arrivalAt || "2026-12-01T00:00"}
           type="datetime-local"
           value={departureAt}
           onChange={(event) => setDepartureAt(event.target.value)}

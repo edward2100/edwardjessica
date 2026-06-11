@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { InvitePage } from "@/components/site/invite-page";
 import { SelfRegisterInvitePage } from "@/components/site/self-register-invite-page";
@@ -6,8 +7,52 @@ import {
   getPublishedContent,
   recordInviteOpen,
 } from "@/lib/data-store";
+import { getSiteUrl } from "@/lib/env";
 import { findPublicInviteTypeByCode, normalizeInviteCode } from "@/lib/rsvp";
 import type { InvitationGroup } from "@/lib/types";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ code: string }>;
+}): Promise<Metadata> {
+  const { code } = await params;
+  const normalizedCode = normalizeInviteCode(decodeURIComponent(code));
+  const [content, invitation] = await Promise.all([
+    getPublishedContent(),
+    getInvitationByCode(normalizedCode),
+  ]);
+  const siteUrl = getSiteUrl();
+  const ogImageUrl = content.images?.ogImage
+    ? new URL(content.images.ogImage, siteUrl).toString()
+    : content.heroImageUrl
+      ? new URL(content.heroImageUrl, siteUrl).toString()
+      : `${siteUrl}/assets/wedding-hero-placeholder.png`;
+
+  // Private invite pages append the group greeting when available.
+  const greeting = invitation?.greeting;
+  const title = greeting
+    ? `The Wedding of Edward & Jessica — ${greeting}`
+    : "The Wedding of Edward & Jessica";
+  const description = "12 December 2026 · Medan — You are warmly invited.";
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: [{ url: ogImageUrl }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImageUrl],
+    },
+  };
+}
 
 export default async function Page({
   params,

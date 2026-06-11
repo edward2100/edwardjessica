@@ -1,17 +1,24 @@
 import type { Metadata, Viewport } from "next";
 import { GuestMusicProvider } from "@/components/site/background-music";
+import { getSiteUrl } from "@/lib/env";
 import "@/app/globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
-  title: "Edward & Jessica Wedding",
-  description: "Wedding invitation and RSVP website for Edward and Jessica.",
+  metadataBase: new URL(getSiteUrl()),
+  title: "The Wedding of Edward & Jessica",
+  description: "Join us as we celebrate our wedding on 12 December 2026 · Medan.",
   openGraph: {
     title: "The Wedding of Edward & Jessica",
-    description: "Together with our families, we invite you to celebrate our wedding.",
+    description: "Join us as we celebrate our wedding on 12 December 2026 · Medan.",
     type: "website",
-    images: ["/assets/wedding-hero-placeholder.png"]
-  }
+    images: ["/assets/wedding-hero-placeholder.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "The Wedding of Edward & Jessica",
+    description: "Join us as we celebrate our wedding on 12 December 2026 · Medan.",
+    images: ["/assets/wedding-hero-placeholder.png"],
+  },
 };
 
 export const viewport: Viewport = {

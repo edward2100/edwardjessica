@@ -38,6 +38,7 @@ export interface WeddingEvent {
   venueName: string;
   venueAddress: string;
   note?: LocalizedString;
+  mapUrl?: string;
 }
 
 export interface DiscoverMedanGuideItem {
@@ -45,6 +46,7 @@ export interface DiscoverMedanGuideItem {
   name: LocalizedString;
   note: LocalizedString;
   imageUrl?: string;
+  mapUrl?: string;
 }
 
 export interface DiscoverMedanGuideSection {
@@ -105,6 +107,9 @@ export interface WeddingContent {
   discoverSupperImageUrl: string;
   discoverCafeImageUrl: string;
   imageCrops: Partial<Record<ImageCropSlot, ImageCropSettings>>;
+  images: Partial<Record<ImageCropSlot | "ogImage", string>>;
+  mobileImages: Partial<Record<ImageCropSlot, string>>;
+  imageFrames: Partial<Record<ImageCropSlot, ImageFrameRatio>>;
   discoverMedan: DiscoverMedanContent;
   publicInviteTypes: PublicInviteType[];
   gallery: MediaAsset[];
@@ -125,6 +130,8 @@ export type ImageCropSlot =
   | "discoverFood"
   | "discoverSupper"
   | "discoverCafe";
+
+export type ImageFrameRatio = "square" | "portrait" | "landscape";
 
 export interface ImageFocalPoint {
   x: number;
@@ -304,6 +311,7 @@ export interface AdminSnapshot {
   content: WeddingContent;
   history: RsvpHistoryItem[];
   messageLogs: AdminMessageLog[];
+  travelPlans: TravelPlan[];
 }
 
 export interface GuestCsvRow {

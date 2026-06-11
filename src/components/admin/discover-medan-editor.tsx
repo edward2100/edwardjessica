@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Plus, Trash2 } from "lucide-react";
+import { ImagePlus, MapPin, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import type { ChangeEvent } from "react";
 import type {
@@ -351,6 +351,15 @@ export function DiscoverMedanEditor({
                         }
                       />
                     </div>
+                    {/* F6: Google Maps link per recommendation item */}
+                    <ItemMapUrlField
+                      value={item.mapUrl || ""}
+                      onChange={(value) =>
+                        updateItem(section.id, item.id, {
+                          mapUrl: value.trim() || undefined,
+                        })
+                      }
+                    />
                     <div className="flow-preview-actions">
                       <label className="button button-muted">
                         <ImagePlus size={15} />
@@ -397,6 +406,39 @@ export function DiscoverMedanEditor({
         ))}
       </div>
     </div>
+  );
+}
+
+function ItemMapUrlField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const valid = !value.trim() || (() => {
+    try { return new URL(value.trim()).protocol === "https:"; } catch { return false; }
+  })();
+  return (
+    <label className="form-field" style={{ marginTop: 10 }}>
+      <span>
+        <MapPin size={13} style={{ display: "inline", marginRight: 4 }} />
+        Google Maps link (optional)
+      </span>
+      <input
+        className="input"
+        type="url"
+        value={value}
+        placeholder="https://maps.app.goo.gl/…"
+        onChange={(e) => onChange(e.target.value)}
+        style={!valid ? { borderColor: "var(--color-error, #c00)" } : undefined}
+      />
+      {!valid && (
+        <span className="muted" style={{ marginTop: 4, color: "var(--color-error, #c00)", fontSize: "0.8em" }}>
+          Must be an https URL when present.
+        </span>
+      )}
+    </label>
   );
 }
 

@@ -1,9 +1,11 @@
 "use client";
 
 import { CheckCircle2, Mail, ShieldCheck } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { copy } from "@/lib/i18n";
 import type { Language } from "@/lib/types";
+
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export function EmailOtpGate({
   autoVerifySession = true,
@@ -24,7 +26,10 @@ export function EmailOtpGate({
   const [notice, setNotice] = useState("");
   const [devCode, setDevCode] = useState("");
   const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState<"send" | "verify" | "">("");
+  const [loading, setLoading] = useState<"send" | "verify" | "resend" | "">("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const codeInputRef = useRef<HTMLInputElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!autoVerifySession) return;
@@ -37,9 +42,33 @@ export function EmailOtpGate({
       .catch(() => undefined);
   }, [autoVerifySession, code, onVerified]);
 
-  async function sendCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoading("send");
+  // Scroll into view and focus the code input when the code step appears
+  useEffect(() => {
+    if (!sent) return;
+    const timeout = window.setTimeout(() => {
+      containerRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      codeInputRef.current?.focus();
+    }, 40);
+    return () => window.clearTimeout(timeout);
+  }, [sent]);
+
+  // Countdown tick for the resend cooldown
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const interval = window.setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [resendCooldown]);
+
+  async function doSendOtp(isResend = false) {
+    setLoading(isResend ? "resend" : "send");
     setNotice("");
     setDevCode("");
     try {
@@ -54,12 +83,17 @@ export function EmailOtpGate({
       };
       setLoading("");
       if (!response.ok) {
+        // Honour 429 rate-limit with the server's error message
         setNotice(json.error || c.unableToSaveRsvp);
+        if (response.status === 429) {
+          setResendCooldown(RESEND_COOLDOWN_SECONDS);
+        }
         return;
       }
       setSent(true);
       setDevCode(json.devCode || "");
       setNotice(c.otpSent);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch {
       setLoading("");
       setNotice(
@@ -68,6 +102,11 @@ export function EmailOtpGate({
           : "A network error occurred. Please try again.",
       );
     }
+  }
+
+  function sendCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void doSendOtp(false);
   }
 
   async function verifyCode(event: FormEvent<HTMLFormElement>) {
@@ -98,8 +137,13 @@ export function EmailOtpGate({
     }
   }
 
+  const resendLabel =
+    resendCooldown > 0
+      ? c.resendCodeIn.replace("{s}", String(resendCooldown))
+      : c.resendCode;
+
   return (
-    <div className="invite-panel">
+    <div className="invite-panel" ref={containerRef}>
       <p className="eyebrow">
         <ShieldCheck size={15} style={{ display: "inline", marginRight: 6 }} />
         {c.verifyEmailTitle}
@@ -140,22 +184,33 @@ export function EmailOtpGate({
           <label className="form-field" htmlFor="guest-otp-token">
             <span>{c.enterOtpCode}</span>
             <input
+              autoFocus
               className="input"
               id="guest-otp-token"
               inputMode="numeric"
+              ref={codeInputRef}
               value={token}
               onChange={(event) => setToken(event.target.value)}
               required
             />
           </label>
-          <button
-            className="button button-primary"
-            disabled={loading === "verify"}
-            type="submit"
-            style={{ marginTop: 14 }}
-          >
-            {loading === "verify" ? c.verifyingCode : c.verifyCode}
-          </button>
+          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+            <button
+              className="button button-primary"
+              disabled={loading === "verify"}
+              type="submit"
+            >
+              {loading === "verify" ? c.verifyingCode : c.verifyCode}
+            </button>
+            <button
+              className="button button-muted"
+              disabled={resendCooldown > 0 || loading === "resend"}
+              type="button"
+              onClick={() => void doSendOtp(true)}
+            >
+              {loading === "resend" ? c.sendingCode : resendLabel}
+            </button>
+          </div>
         </form>
       ) : null}
 

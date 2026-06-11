@@ -1,6 +1,7 @@
 import type {
   ImageCropSettings,
   ImageCropSlot,
+  ImageFrameRatio,
   WeddingContent,
 } from "@/lib/types";
 
@@ -78,6 +79,45 @@ export function imageCropScale(
   viewport: keyof ImageCropSettings,
 ) {
   return normalizeImageCrop(crop)[viewport].zoom;
+}
+
+/** CSS aspect-ratio strings for each frame variant. */
+export const FRAME_RATIOS: Record<ImageFrameRatio, string> = {
+  square: "1 / 1",
+  portrait: "4 / 5",
+  landscape: "3 / 2",
+};
+
+/**
+ * Per-slot default frame ratios that reproduce the current rendered aspect
+ * for each slot so nothing changes visually until Edward picks a new ratio.
+ * hero is excluded — it is always full-bleed with no frame.
+ */
+const SLOT_FRAME_DEFAULTS: Partial<Record<ImageCropSlot, ImageFrameRatio>> = {
+  invitation: "landscape",
+  story: "portrait",
+  travelHero: "landscape",
+  travelAirport: "landscape",
+  travelAccommodation: "landscape",
+  travelForm: "landscape",
+  discoverHero: "landscape",
+  discoverIntro: "portrait",
+  discoverFood: "landscape",
+  discoverSupper: "landscape",
+  discoverCafe: "landscape",
+};
+
+/**
+ * Returns the CSS aspect-ratio string for a given slot, reading the stored
+ * imageFrames value from content with a per-slot fallback.
+ */
+export function frameAspect(
+  content: Pick<WeddingContent, "imageFrames">,
+  slot: ImageCropSlot,
+): string {
+  const stored = content.imageFrames?.[slot];
+  const ratio: ImageFrameRatio = stored ?? SLOT_FRAME_DEFAULTS[slot] ?? "landscape";
+  return FRAME_RATIOS[ratio];
 }
 
 export function imageCropStyleVars(

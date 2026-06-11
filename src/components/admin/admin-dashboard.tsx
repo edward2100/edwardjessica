@@ -9,25 +9,26 @@ import {
   ImagePlus,
   LayoutDashboard,
   LogOut,
+  MapPin,
   MessageCircle,
   Music2,
   Plus,
   Save,
   Search,
   Send,
+  Luggage,
   Trash2,
   Upload,
   Users,
   X,
 } from "lucide-react";
-import { ChangeEvent, ElementType, useMemo, useState } from "react";
+import { ChangeEvent, ElementType, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { DiscoverMedanEditor } from "@/components/admin/discover-medan-editor";
 import {
   defaultImageCrop,
-  imageCropScale,
-  imageCropPosition,
+  FRAME_RATIOS,
   normalizeImageCrop,
 } from "@/lib/image-crop";
 import {
@@ -46,11 +47,15 @@ import type {
   EventKey,
   GuestSide,
   ImageCropSettings,
+  ImageCropSlot,
+  ImageFrameRatio,
   InvitationGroup,
   MediaAsset,
   PublicInviteFlow,
   PublicInviteType,
   RsvpStatus,
+  TravelAccommodationOption,
+  TravelPlan,
   WeddingContent,
 } from "@/lib/types";
 
@@ -61,6 +66,7 @@ type Tab =
   | "content"
   | "media"
   | "analytics"
+  | "travel"
   | "export";
 type ImageSlot =
   | "hero"
@@ -74,7 +80,8 @@ type ImageSlot =
   | "discoverIntro"
   | "discoverFood"
   | "discoverSupper"
-  | "discoverCafe";
+  | "discoverCafe"
+  | "ogImage";
 
 const tabs: { id: Tab; label: string; icon: ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -83,6 +90,7 @@ const tabs: { id: Tab; label: string; icon: ElementType }[] = [
   { id: "content", label: "Content", icon: FileText },
   { id: "media", label: "Photos & Music", icon: ImagePlus },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "travel", label: "Travel", icon: Luggage },
   { id: "export", label: "Export", icon: Download },
 ];
 
@@ -105,6 +113,13 @@ const imageSlotLabels: Record<ImageSlot, string> = {
   discoverFood: "Local Food",
   discoverSupper: "Snacks & Supper",
   discoverCafe: "Cafes",
+  ogImage: "Link Preview (WhatsApp/OG)",
+};
+
+const accommodationOptionLabels: Record<TravelAccommodationOption, string> = {
+  specific_roommates: "Specific roommates",
+  assign_roommates: "Assign roommates",
+  own_accommodation: "Own accommodation",
 };
 
 const publicInviteFlowLabels: Record<PublicInviteFlow, string> = {
@@ -271,9 +286,6 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit) {
   }
 }
 
-function cropForSlot(content: WeddingContent, slot: ImageSlot) {
-  return normalizeImageCrop(content.imageCrops?.[slot]);
-}
 
 export function AdminDashboard({
   admin,
@@ -358,6 +370,9 @@ export function AdminDashboard({
         ) : null}
         {activeTab === "analytics" ? (
           <AnalyticsView snapshot={currentSnapshot} />
+        ) : null}
+        {activeTab === "travel" ? (
+          <TravelView snapshot={currentSnapshot} />
         ) : null}
         {activeTab === "export" ? <ExportView /> : null}
       </section>
@@ -1711,6 +1726,11 @@ function ContentView({
         </div>
       </div>
 
+      <EventsEditor
+        draft={draft}
+        onDraft={setDraft}
+      />
+
       <DiscoverMedanEditor
         content={draft}
         onChange={setDraft}
@@ -1751,13 +1771,13 @@ function MediaView({
   async function upload(
     event: ChangeEvent<HTMLInputElement>,
     kind: MediaAsset["kind"],
-    options: { slot?: ImageSlot } = {},
+    options: { slot?: ImageSlot; target?: "desktop" | "mobile" } = {},
   ) {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
 
     setNotice("");
-    const uploadKey = options.slot || kind;
+    const uploadKey = options.target === "mobile" ? `${options.slot}-mobile` : (options.slot || kind);
     setUploading(uploadKey);
     let latestContent: WeddingContent | null = null;
     try {
@@ -1771,6 +1791,7 @@ function MediaView({
         formData.set("file", preparedFile);
         formData.set("kind", kind);
         if (options.slot) formData.set("slot", options.slot);
+        if (options.target) formData.set("target", options.target);
         const response = await fetchWithTimeout("/api/admin/media", {
           method: "POST",
           body: formData,
@@ -1788,9 +1809,11 @@ function MediaView({
 
       if (latestContent) {
         onContent(latestContent);
+        const slotLabel = options.slot ? imageSlotLabels[options.slot] : "";
+        const targetLabel = options.target === "mobile" ? " (mobile)" : options.target === "desktop" ? " (desktop)" : "";
         setNotice(
           options.slot
-            ? `${imageSlotLabels[options.slot]} photo uploaded to draft. Publish changes before sharing.`
+            ? `${slotLabel}${targetLabel} photo uploaded to draft. Publish changes before sharing.`
             : "Media uploaded to draft. Publish changes before sharing.",
         );
       }
@@ -1823,7 +1846,26 @@ function MediaView({
     setNotice("Media removed from draft.");
   }
 
-  async function saveCrop(slot: ImageSlot, crop: ImageCropSettings) {
+  async function removeMobileSlot(slot: ImageCropSlot) {
+    setNotice("");
+    const response = await fetch("/api/admin/media", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "removeMobileSlot", slot }),
+    });
+    const json = (await response.json()) as {
+      content?: WeddingContent;
+      error?: string;
+    };
+    if (!response.ok || !json.content) {
+      setNotice(json.error || "Unable to remove mobile image.");
+      return;
+    }
+    onContent(json.content);
+    setNotice(`${imageSlotLabels[slot]} mobile image removed.`);
+  }
+
+  async function saveCrop(slot: ImageCropSlot, crop: ImageCropSettings) {
     setNotice("");
     const response = await fetch("/api/admin/media", {
       method: "PUT",
@@ -1844,6 +1886,25 @@ function MediaView({
     }
     onContent(json.content);
     setNotice(`${imageSlotLabels[slot]} crop saved to draft.`);
+  }
+
+  async function saveFrame(slot: ImageCropSlot, ratio: ImageFrameRatio) {
+    setNotice("");
+    const response = await fetch("/api/admin/media", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "setImageFrame", slot, ratio }),
+    });
+    const json = (await response.json()) as {
+      content?: WeddingContent;
+      error?: string;
+    };
+    if (!response.ok || !json.content) {
+      setNotice(json.error || "Unable to save frame ratio.");
+      return;
+    }
+    onContent(json.content);
+    setNotice(`${imageSlotLabels[slot]} frame ratio saved to draft.`);
   }
 
   async function publish() {
@@ -1906,39 +1967,39 @@ function MediaView({
         </h3>
         <div className="media-list" style={{ marginTop: 12 }}>
           <SitePhotoSlot
-            crop={cropForSlot(content, "hero")}
+            content={content}
             description="Full-screen opening image."
             label={imageSlotLabels.hero}
             onCropChange={(crop) => saveCrop("hero", crop)}
-            onUpload={(event) => upload(event, "hero", { slot: "hero" })}
-            uploadLabel={uploading === "hero" ? "Uploading..." : "Upload Hero"}
-            url={content.heroImageUrl}
+            onUploadDesktop={(event) => upload(event, "hero", { slot: "hero", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "hero", { slot: "hero", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("hero")}
+            slot="hero"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "invitation")}
+            content={content}
             description="Image shown below the opening invitation message."
             label={imageSlotLabels.invitation}
             onCropChange={(crop) => saveCrop("invitation", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "invitation" })
-            }
-            uploadLabel={
-              uploading === "invitation"
-                ? "Uploading..."
-                : "Upload Invitation Intro"
-            }
-            url={content.invitationImageUrl}
+            onFrameChange={(ratio) => saveFrame("invitation", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "invitation", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "invitation", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("invitation")}
+            slot="invitation"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "story")}
+            content={content}
             description="Image shown above the story section."
             label={imageSlotLabels.story}
             onCropChange={(crop) => saveCrop("story", crop)}
-            onUpload={(event) => upload(event, "gallery", { slot: "story" })}
-            uploadLabel={
-              uploading === "story" ? "Uploading..." : "Upload Story"
-            }
-            url={content.storyImageUrl}
+            onFrameChange={(ratio) => saveFrame("story", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "story", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "story", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("story")}
+            slot="story"
+            uploading={uploading}
           />
         </div>
       </div>
@@ -1954,64 +2015,51 @@ function MediaView({
         </p>
         <div className="media-list" style={{ marginTop: 12 }}>
           <SitePhotoSlot
-            crop={cropForSlot(content, "travelHero")}
+            content={content}
             description="Full-screen hero image for the Travel & Accommodation page."
             label={imageSlotLabels.travelHero}
             onCropChange={(crop) => saveCrop("travelHero", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "travelHero" })
-            }
-            uploadLabel={
-              uploading === "travelHero"
-                ? "Uploading..."
-                : "Upload Travel Hero"
-            }
-            url={content.travelHeroImageUrl}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "travelHero", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "travelHero", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("travelHero")}
+            slot="travelHero"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "travelAirport")}
+            content={content}
             description="Image shown after the Kualanamu International Airport note."
             label={imageSlotLabels.travelAirport}
             onCropChange={(crop) => saveCrop("travelAirport", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "travelAirport" })
-            }
-            uploadLabel={
-              uploading === "travelAirport"
-                ? "Uploading..."
-                : "Upload Airport Image"
-            }
-            url={content.travelAirportImageUrl}
+            onFrameChange={(ratio) => saveFrame("travelAirport", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "travelAirport", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "travelAirport", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("travelAirport")}
+            slot="travelAirport"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "travelAccommodation")}
+            content={content}
             description="Image shown after the Grand City Hall Medan accommodation note."
             label={imageSlotLabels.travelAccommodation}
             onCropChange={(crop) => saveCrop("travelAccommodation", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "travelAccommodation" })
-            }
-            uploadLabel={
-              uploading === "travelAccommodation"
-                ? "Uploading..."
-                : "Upload Accommodation Image"
-            }
-            url={content.travelAccommodationImageUrl}
+            onFrameChange={(ratio) => saveFrame("travelAccommodation", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "travelAccommodation", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "travelAccommodation", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("travelAccommodation")}
+            slot="travelAccommodation"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "travelForm")}
+            content={content}
             description="Image shown between Accommodation and the travel plans form."
             label={imageSlotLabels.travelForm}
             onCropChange={(crop) => saveCrop("travelForm", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "travelForm" })
-            }
-            uploadLabel={
-              uploading === "travelForm"
-                ? "Uploading..."
-                : "Upload Form Intro Image"
-            }
-            url={content.travelFormImageUrl}
+            onFrameChange={(ratio) => saveFrame("travelForm", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "travelForm", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "travelForm", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("travelForm")}
+            slot="travelForm"
+            uploading={uploading}
           />
         </div>
       </div>
@@ -2027,80 +2075,140 @@ function MediaView({
         </p>
         <div className="media-list" style={{ marginTop: 12 }}>
           <SitePhotoSlot
-            crop={cropForSlot(content, "discoverHero")}
+            content={content}
             description="Full-screen hero image for the Discover Medan page."
             label={imageSlotLabels.discoverHero}
             onCropChange={(crop) => saveCrop("discoverHero", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "discoverHero" })
-            }
-            uploadLabel={
-              uploading === "discoverHero"
-                ? "Uploading..."
-                : "Upload Discover Hero"
-            }
-            url={content.discoverHeroImageUrl}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "discoverHero", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "discoverHero", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("discoverHero")}
+            slot="discoverHero"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "discoverIntro")}
-            description="Image shown beside the Explore Medan introduction."
+            content={content}
+            description="Image shown beside the Discover Medan introduction."
             label={imageSlotLabels.discoverIntro}
             onCropChange={(crop) => saveCrop("discoverIntro", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "discoverIntro" })
-            }
-            uploadLabel={
-              uploading === "discoverIntro"
-                ? "Uploading..."
-                : "Upload Intro Image"
-            }
-            url={content.discoverIntroImageUrl}
+            onFrameChange={(ratio) => saveFrame("discoverIntro", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "discoverIntro", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "discoverIntro", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("discoverIntro")}
+            slot="discoverIntro"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "discoverFood")}
+            content={content}
             description="Image used in the Local Food section."
             label={imageSlotLabels.discoverFood}
             onCropChange={(crop) => saveCrop("discoverFood", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "discoverFood" })
-            }
-            uploadLabel={
-              uploading === "discoverFood"
-                ? "Uploading..."
-                : "Upload Food Image"
-            }
-            url={content.discoverFoodImageUrl}
+            onFrameChange={(ratio) => saveFrame("discoverFood", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "discoverFood", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "discoverFood", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("discoverFood")}
+            slot="discoverFood"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "discoverSupper")}
+            content={content}
             description="Image used in the Snacks & Supper Spots section."
             label={imageSlotLabels.discoverSupper}
             onCropChange={(crop) => saveCrop("discoverSupper", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "discoverSupper" })
-            }
-            uploadLabel={
-              uploading === "discoverSupper"
-                ? "Uploading..."
-                : "Upload Supper Image"
-            }
-            url={content.discoverSupperImageUrl}
+            onFrameChange={(ratio) => saveFrame("discoverSupper", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "discoverSupper", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "discoverSupper", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("discoverSupper")}
+            slot="discoverSupper"
+            uploading={uploading}
           />
           <SitePhotoSlot
-            crop={cropForSlot(content, "discoverCafe")}
+            content={content}
             description="Image used in the Cafes section."
             label={imageSlotLabels.discoverCafe}
             onCropChange={(crop) => saveCrop("discoverCafe", crop)}
-            onUpload={(event) =>
-              upload(event, "gallery", { slot: "discoverCafe" })
-            }
-            uploadLabel={
-              uploading === "discoverCafe"
-                ? "Uploading..."
-                : "Upload Cafe Image"
-            }
-            url={content.discoverCafeImageUrl}
+            onFrameChange={(ratio) => saveFrame("discoverCafe", ratio)}
+            onUploadDesktop={(event) => upload(event, "gallery", { slot: "discoverCafe", target: "desktop" })}
+            onUploadMobile={(event) => upload(event, "gallery", { slot: "discoverCafe", target: "mobile" })}
+            onRemoveMobile={() => removeMobileSlot("discoverCafe")}
+            slot="discoverCafe"
+            uploading={uploading}
           />
+        </div>
+      </div>
+
+      {/* OG / Link preview image slot */}
+      <div className="admin-panel">
+        <p className="eyebrow">Link Preview</p>
+        <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+          {imageSlotLabels.ogImage}
+        </h3>
+        <p className="muted" style={{ marginTop: 8 }}>
+          Shown when the invite link is shared on WhatsApp or social media.
+          Ideal ratio roughly 1.91:1 (e.g. 1200 × 630 px).
+        </p>
+        <div className="media-list" style={{ marginTop: 12 }}>
+          <div style={{ padding: 12, border: "1px solid var(--line, #e0d8cc)", borderRadius: 8, background: "var(--bg-panel, #fff)" }}>
+            {content.images?.ogImage ? (
+              <>
+                <Image
+                  src={content.images.ogImage}
+                  alt=""
+                  width={320}
+                  height={168}
+                  unoptimized
+                  style={{ borderRadius: 6, objectFit: "cover" }}
+                />
+                <p className="muted" style={{ marginTop: 8 }}>{content.images.ogImage}</p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                  <label className="button button-muted">
+                    <ImagePlus size={14} />
+                    {uploading === "ogImage" ? "Uploading…" : "Replace OG Image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => upload(event, "gallery", { slot: "ogImage", target: "desktop" as const })}
+                      style={{ display: "none" }}
+                      disabled={uploading === "ogImage"}
+                    />
+                  </label>
+                  <button
+                    className="button button-muted"
+                    type="button"
+                    onClick={() => {
+                      fetch("/api/admin/media", {
+                        method: "PUT",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ action: "removeOgImage" }),
+                      })
+                        .then((r) => r.json())
+                        .then((j: { content?: WeddingContent; error?: string }) => {
+                          if (j.content) { onContent(j.content); setNotice("OG image removed."); }
+                          else setNotice(j.error || "Unable to remove.");
+                        });
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    Remove
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div>
+                <p className="muted">No link preview image set. Hero image will be used instead.</p>
+                <label className="button button-muted" style={{ marginTop: 10, display: "inline-flex" }}>
+                  <ImagePlus size={14} />
+                  {uploading === "ogImage" ? "Uploading…" : "Upload OG Image"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => upload(event, "gallery", { slot: "ogImage", target: "desktop" as const })}
+                    style={{ display: "none" }}
+                    disabled={uploading === "ogImage"}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2227,189 +2335,482 @@ function MediaView({
   );
 }
 
-function SitePhotoSlot({
-  crop = defaultImageCrop,
-  description,
+// ── F1: WYSIWYG drag-to-crop editor ──────────────────────────────────────────
+// The user drags the image inside a fixed-size frame preview.
+// Drag delta is converted to focal-point x/y % (inverted so image follows cursor).
+// A zoom slider (1–2.5) sits below the preview.
+// Storage format unchanged: { desktop: {x,y,zoom}, mobile: {x,y,zoom} }.
+function WysiwygCropEditor({
+  crop,
+  frameRatio,
   label,
   onCropChange,
-  onUpload,
-  uploadLabel,
   url,
+  viewport,
 }: {
-  crop?: ImageCropSettings;
-  description: string;
+  crop: ImageCropSettings;
+  frameRatio: string; // e.g. "3 / 2"
   label: string;
   onCropChange: (crop: ImageCropSettings) => void;
-  onUpload: (event: ChangeEvent<HTMLInputElement>) => void;
-  uploadLabel: string;
   url: string;
+  viewport: keyof ImageCropSettings;
 }) {
-  const [draftCrop, setDraftCrop] = useState(() => normalizeImageCrop(crop));
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
 
-  function updateCrop(
-    viewport: keyof ImageCropSettings,
-    axis: "x" | "y" | "zoom",
-    value: string,
-  ) {
-    setDraftCrop((current) =>
+  const focal = crop[viewport];
+
+  // Pointer events (works for mouse + touch)
+  function onPointerDown(e: React.PointerEvent) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStart.current = { px: e.clientX, py: e.clientY, x: focal.x, y: focal.y };
+    setDragging(true);
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragStart.current || !frameRef.current) return;
+    const frame = frameRef.current.getBoundingClientRect();
+    const scale = focal.zoom;
+    // delta in px → % of frame, inverted (dragging right moves focal right)
+    const dxPct = ((e.clientX - dragStart.current.px) * 100) / (frame.width * scale);
+    const dyPct = ((e.clientY - dragStart.current.py) * 100) / (frame.height * scale);
+    const newX = Math.min(100, Math.max(0, Math.round(dragStart.current.x - dxPct)));
+    const newY = Math.min(100, Math.max(0, Math.round(dragStart.current.y - dyPct)));
+    onCropChange(
       normalizeImageCrop({
-        ...current,
-        [viewport]: {
-          ...current[viewport],
-          [axis]: Number(value),
-        },
+        ...crop,
+        [viewport]: { ...focal, x: newX, y: newY },
       }),
     );
   }
 
-  function resetCrop() {
-    setDraftCrop(defaultImageCrop);
+  function onPointerUp() {
+    dragStart.current = null;
+    setDragging(false);
   }
 
-  return (
-    <div className="media-preview-row">
-      <Image src={url} alt="" width={160} height={120} unoptimized />
-      <div>
-        <p className="eyebrow">{label}</p>
-        <p style={{ marginTop: 6 }}>{url}</p>
-        <p className="muted" style={{ marginTop: 8 }}>
-          {description}
-        </p>
-        <div className="media-crop-editor">
-          <div className="media-crop-preview-grid">
-            <CropPreview
-              crop={draftCrop}
-              label="Desktop"
-              url={url}
-              viewport="desktop"
-            />
-            <CropPreview
-              crop={draftCrop}
-              label="Mobile"
-              url={url}
-              viewport="mobile"
-            />
-          </div>
-          <CropSliders
-            crop={draftCrop}
-            label="Desktop focal point"
-            onChange={(axis, value) => updateCrop("desktop", axis, value)}
-            viewport="desktop"
-          />
-          <CropSliders
-            crop={draftCrop}
-            label="Mobile focal point"
-            onChange={(axis, value) => updateCrop("mobile", axis, value)}
-            viewport="mobile"
-          />
-          <div className="media-crop-actions">
-            <button
-              className="button button-muted"
-              type="button"
-              onClick={() => onCropChange(draftCrop)}
-            >
-              <Save size={15} />
-              Save crop
-            </button>
-            <button
-              className="button button-muted"
-              type="button"
-              onClick={resetCrop}
-            >
-              Reset center
-            </button>
-            <label className="button button-muted">
-              <ImagePlus size={15} />
-              {uploadLabel}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={onUpload}
-                style={{ display: "none" }}
-              />
-            </label>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+  // Keyboard nudge — arrow keys for accessibility
+  function onKeyDown(e: React.KeyboardEvent) {
+    const step = e.shiftKey ? 5 : 1;
+    const updates: Partial<typeof focal> = {};
+    if (e.key === "ArrowLeft") updates.x = Math.max(0, focal.x - step);
+    if (e.key === "ArrowRight") updates.x = Math.min(100, focal.x + step);
+    if (e.key === "ArrowUp") updates.y = Math.max(0, focal.y - step);
+    if (e.key === "ArrowDown") updates.y = Math.min(100, focal.y + step);
+    if (Object.keys(updates).length) {
+      e.preventDefault();
+      onCropChange(normalizeImageCrop({ ...crop, [viewport]: { ...focal, ...updates } }));
+    }
+  }
 
-function CropPreview({
-  crop,
-  label,
-  url,
-  viewport,
-}: {
-  crop: ImageCropSettings;
-  label: string;
-  url: string;
-  viewport: keyof ImageCropSettings;
-}) {
+  // Compute CSS for the image inside the frame
+  const objectPosition = `${focal.x}% ${focal.y}%`;
+
   return (
-    <figure className={`media-crop-preview ${viewport}`}>
-      <Image
-        src={url}
-        alt=""
-        fill
-        sizes="220px"
-        unoptimized
+    <div style={{ marginBottom: 4 }}>
+      <p className="muted" style={{ marginBottom: 6 }}>
+        {label} — drag to reposition
+      </p>
+      {/* Frame preview */}
+      <div
+        ref={frameRef}
         style={{
-          objectPosition: imageCropPosition(crop, viewport),
-          transform: `scale(${imageCropScale(crop, viewport)})`,
-          transformOrigin: imageCropPosition(crop, viewport),
+          position: "relative",
+          aspectRatio: frameRatio,
+          overflow: "hidden",
+          background: "var(--color-muted, #e8e4dc)",
+          cursor: dragging ? "grabbing" : "grab",
+          borderRadius: 4,
+          maxWidth: 320,
+          outline: dragging ? "2px solid var(--color-accent, #8b7355)" : "none",
+          touchAction: "none",
         }}
-      />
-      <figcaption>{label}</figcaption>
-    </figure>
-  );
-}
-
-function CropSliders({
-  crop,
-  label,
-  onChange,
-  viewport,
-}: {
-  crop: ImageCropSettings;
-  label: string;
-  onChange: (axis: "x" | "y" | "zoom", value: string) => void;
-  viewport: keyof ImageCropSettings;
-}) {
-  return (
-    <div className="media-crop-sliders">
-      <p>{label}</p>
-      <label>
-        <span>Horizontal {crop[viewport].x}%</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={crop[viewport].x}
-          onChange={(event) => onChange("x", event.target.value)}
-        />
-      </label>
-      <label>
-        <span>Vertical {crop[viewport].y}%</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={crop[viewport].y}
-          onChange={(event) => onChange("y", event.target.value)}
-        />
-      </label>
-      <label>
-        <span>Zoom {crop[viewport].zoom.toFixed(2)}x</span>
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        tabIndex={0}
+        role="img"
+        aria-label={`Crop preview for ${label}. Use arrow keys to move focal point.`}
+        onKeyDown={onKeyDown}
+      >
+        {url ? (
+          <Image
+            src={url}
+            alt=""
+            fill
+            unoptimized
+            draggable={false}
+            style={{
+              objectFit: "cover",
+              objectPosition,
+              transform: `scale(${focal.zoom})`,
+              transformOrigin: objectPosition,
+              pointerEvents: "none",
+              userSelect: "none",
+            }}
+          />
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-muted-text, #9e978a)" }}>No image</div>
+        )}
+      </div>
+      {/* Zoom slider */}
+      <label style={{ display: "block", marginTop: 8 }}>
+        <span className="muted">Zoom {focal.zoom.toFixed(2)}×</span>
         <input
           type="range"
           min="1"
           max="2.5"
           step="0.05"
-          value={crop[viewport].zoom}
-          onChange={(event) => onChange("zoom", event.target.value)}
+          value={focal.zoom}
+          style={{ display: "block", width: "100%", marginTop: 4 }}
+          onChange={(e) =>
+            onCropChange(
+              normalizeImageCrop({
+                ...crop,
+                [viewport]: { ...focal, zoom: Number(e.target.value) },
+              }),
+            )
+          }
         />
       </label>
+      <p className="muted" style={{ marginTop: 4, fontSize: "0.8em" }}>
+        Focal: {focal.x}% × {focal.y}%
+      </p>
+    </div>
+  );
+}
+
+// F1 + F2 + F4: Full site photo slot with WYSIWYG crop, dual upload, ratio picker.
+function SitePhotoSlot({
+  content,
+  description,
+  label,
+  onCropChange,
+  onFrameChange,
+  onRemoveMobile,
+  onUploadDesktop,
+  onUploadMobile,
+  slot,
+  uploading,
+}: {
+  content: WeddingContent;
+  description: string;
+  label: string;
+  onCropChange: (crop: ImageCropSettings) => void;
+  onFrameChange?: (ratio: ImageFrameRatio) => void;
+  onRemoveMobile?: () => void;
+  onUploadDesktop: (event: ChangeEvent<HTMLInputElement>) => void;
+  onUploadMobile?: (event: ChangeEvent<HTMLInputElement>) => void;
+  slot: ImageCropSlot;
+  uploading: string;
+}) {
+  const isHero = slot === "hero";
+  const [draftCrop, setDraftCrop] = useState(() => normalizeImageCrop(content.imageCrops?.[slot]));
+
+  // Resolve URLs
+  const desktopUrl: string =
+    (content.images?.[slot] as string | undefined) ||
+    contentLegacyUrl(content, slot);
+  const mobileUrl: string | undefined =
+    (content.mobileImages?.[slot] as string | undefined) || undefined;
+
+  // Frame ratio for non-hero slots
+  const currentFrame: ImageFrameRatio =
+    content.imageFrames?.[slot] ??
+    (slot === "invitation" ? "landscape" : slot === "story" || slot === "discoverIntro" ? "portrait" : "landscape");
+
+  // For hero: fixed frames per viewport; for others use the slot frame
+  const desktopFrameRatio = isHero ? "16 / 9" : FRAME_RATIOS[currentFrame];
+  const mobileFrameRatio = isHero ? "9 / 16" : FRAME_RATIOS[currentFrame];
+
+  // Only update local state during drag; the "Save crop" button persists to API
+  function handleLocalCropChange(nextCrop: ImageCropSettings) {
+    setDraftCrop(nextCrop);
+  }
+
+  return (
+    <div style={{ border: "1px solid var(--line, #e0d8cc)", borderRadius: 8, padding: 14, background: "var(--bg-panel, #fff)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        <div>
+          <p className="eyebrow">{label}</p>
+          <p className="muted" style={{ marginTop: 4 }}>{description}</p>
+        </div>
+        {/* F4: Ratio picker for non-hero slots */}
+        {!isHero && onFrameChange ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span className="muted" style={{ fontSize: "0.8em" }}>Frame:</span>
+            {(["landscape", "portrait", "square"] as ImageFrameRatio[]).map((ratio) => (
+              <button
+                key={ratio}
+                type="button"
+                className={`button button-muted${currentFrame === ratio ? " active" : ""}`}
+                style={{ padding: "3px 10px", fontSize: "0.8em" }}
+                onClick={() => onFrameChange(ratio)}
+              >
+                {ratio === "landscape" ? "Landscape" : ratio === "portrait" ? "Portrait" : "Square"}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {/* F2: Dual upload targets + WYSIWYG crop editors */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 12 }}>
+        {/* Desktop */}
+        <div style={{ background: "var(--color-surface, #f9f6f0)", borderRadius: 6, padding: 14, border: "1px solid var(--color-border, #e0d8cc)" }}>
+          <p className="muted" style={{ marginBottom: 6 }}>
+            <strong>Desktop</strong>
+            {!mobileUrl ? <span> · used everywhere if no mobile image is set</span> : null}
+          </p>
+          <WysiwygCropEditor
+            crop={draftCrop}
+            frameRatio={desktopFrameRatio}
+            label="Desktop"
+            onCropChange={handleLocalCropChange}
+            url={desktopUrl}
+            viewport="desktop"
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+            <label className="button button-muted">
+              <ImagePlus size={14} />
+              {uploading === slot ? "Uploading…" : "Upload Desktop"}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={onUploadDesktop}
+                style={{ display: "none" }}
+                disabled={uploading === slot}
+              />
+            </label>
+            <button
+              className="button button-muted"
+              type="button"
+              onClick={() => onCropChange(draftCrop)}
+            >
+              <Save size={14} />
+              Save crop
+            </button>
+            <button
+              className="button button-muted"
+              type="button"
+              onClick={() => {
+                setDraftCrop(defaultImageCrop);
+                onCropChange(defaultImageCrop);
+              }}
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile (not for ogImage which is display-only) */}
+        {onUploadMobile ? (
+          <div style={{ background: "var(--color-surface, #f9f6f0)", borderRadius: 6, padding: 14, border: "1px solid var(--color-border, #e0d8cc)" }}>
+            <p className="muted" style={{ marginBottom: 6 }}>
+              <strong>Mobile</strong>
+              {!mobileUrl ? <span> · not set; desktop image used</span> : null}
+            </p>
+            <WysiwygCropEditor
+              crop={draftCrop}
+              frameRatio={mobileFrameRatio}
+              label="Mobile"
+              onCropChange={handleLocalCropChange}
+              url={mobileUrl || desktopUrl}
+              viewport="mobile"
+            />
+            <p className="muted" style={{ marginTop: 6, fontSize: "0.8em" }}>
+              If only one image is set, it is used everywhere.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <label className="button button-muted">
+                <ImagePlus size={14} />
+                {uploading === `${slot}-mobile` ? "Uploading…" : mobileUrl ? "Replace Mobile" : "Upload Mobile"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={onUploadMobile}
+                  style={{ display: "none" }}
+                  disabled={uploading === `${slot}-mobile`}
+                />
+              </label>
+              {mobileUrl && onRemoveMobile ? (
+                <button
+                  className="button button-muted"
+                  type="button"
+                  onClick={onRemoveMobile}
+                >
+                  <Trash2 size={14} />
+                  Remove Mobile
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Resolve the legacy *ImageUrl field for a given slot. */
+function contentLegacyUrl(content: WeddingContent, slot: ImageCropSlot): string {
+  switch (slot) {
+    case "hero": return content.heroImageUrl;
+    case "invitation": return content.invitationImageUrl;
+    case "story": return content.storyImageUrl;
+    case "travelHero": return content.travelHeroImageUrl;
+    case "travelAirport": return content.travelAirportImageUrl;
+    case "travelAccommodation": return content.travelAccommodationImageUrl;
+    case "travelForm": return content.travelFormImageUrl;
+    case "discoverHero": return content.discoverHeroImageUrl;
+    case "discoverIntro": return content.discoverIntroImageUrl;
+    case "discoverFood": return content.discoverFoodImageUrl;
+    case "discoverSupper": return content.discoverSupperImageUrl;
+    case "discoverCafe": return content.discoverCafeImageUrl;
+  }
+}
+
+// F6: Events map URL editor, embedded in ContentView.
+function EventsEditor({
+  draft,
+  onDraft,
+}: {
+  draft: WeddingContent;
+  onDraft: (content: WeddingContent) => void;
+}) {
+  function updateEventMapUrl(key: EventKey, mapUrl: string) {
+    onDraft({
+      ...draft,
+      events: draft.events.map((event) =>
+        event.key === key ? { ...event, mapUrl: mapUrl.trim() || undefined } : event,
+      ),
+    });
+  }
+
+  function validateMapUrl(value: string) {
+    if (!value.trim()) return true;
+    try {
+      const url = new URL(value.trim());
+      return url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div className="section-heading" style={{ marginBottom: 12 }}>
+        <div>
+          <p className="eyebrow">Events</p>
+          <h3 className="serif" style={{ fontSize: "1.8rem", marginTop: 6 }}>
+            Google Maps links
+          </h3>
+          <p className="muted" style={{ marginTop: 6 }}>
+            Each event can show a Location button to guests.
+          </p>
+        </div>
+      </div>
+      <div style={{ display: "grid", gap: 12 }}>
+        {draft.events.map((event) => {
+          const urlValue = event.mapUrl || "";
+          const valid = validateMapUrl(urlValue);
+          return (
+            <div key={event.key} className="invite-panel">
+              <p className="eyebrow">{eventLabels[event.key as EventKey]}</p>
+              <label className="form-field" style={{ marginTop: 8 }}>
+                <span>
+                  <MapPin size={13} style={{ display: "inline", marginRight: 4 }} />
+                  Google Maps link
+                </span>
+                <input
+                  className="input"
+                  type="url"
+                  value={urlValue}
+                  placeholder="https://maps.app.goo.gl/…"
+                  onChange={(e) => updateEventMapUrl(event.key, e.target.value)}
+                  style={!valid ? { borderColor: "var(--color-error, #c00)" } : undefined}
+                />
+              </label>
+              {!valid && (
+                <p className="muted" style={{ marginTop: 4, color: "var(--color-error, #c00)" }}>
+                  Must be an https URL when present.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// B2: Travel tab — table of all submitted travel plans.
+function TravelView({ snapshot }: { snapshot: AdminSnapshot }) {
+  const plans = snapshot.travelPlans;
+  const invitations = snapshot.invitations;
+
+  function invitationForPlan(plan: TravelPlan): InvitationGroup | undefined {
+    return invitations.find((inv) => inv.id === plan.invitationGroupId);
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div className="admin-panel">
+        <p className="eyebrow">Travel Plans</p>
+        <h3 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>
+          Submitted travel plans
+        </h3>
+        <p className="muted" style={{ marginTop: 8 }}>
+          Sorted by arrival date (Asia/Jakarta). {plans.length} plan{plans.length !== 1 ? "s" : ""} submitted.
+        </p>
+      </div>
+      {plans.length === 0 ? (
+        <div className="admin-panel">
+          <p className="muted">No travel plans submitted yet.</p>
+        </div>
+      ) : (
+        <div className="admin-panel" style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>Code</th>
+                <th>Flow</th>
+                <th>Guests</th>
+                <th>Arrival</th>
+                <th>Departure</th>
+                <th>Accommodation</th>
+                <th>Roommates</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plans.map((plan) => {
+                const inv = invitationForPlan(plan);
+                return (
+                  <tr key={plan.id}>
+                    <td>
+                      <strong>{inv?.groupName || "—"}</strong>
+                      {inv?.greeting ? (
+                        <p className="muted">{inv.greeting}</p>
+                      ) : null}
+                    </td>
+                    <td>{inv?.code || "—"}</td>
+                    <td>{inv ? publicInviteFlowLabels[inv.flow] : "—"}</td>
+                    <td>{inv?.guests.length ?? "—"}</td>
+                    <td>{formatDateTime(plan.arrivalAt)}</td>
+                    <td>{formatDateTime(plan.departureAt)}</td>
+                    <td>{accommodationOptionLabels[plan.accommodationOption]}</td>
+                    <td>{plan.preferredRoommates || "—"}</td>
+                    <td>{formatDateTime(plan.updatedAt)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

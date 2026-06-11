@@ -2,6 +2,7 @@
 
 import {
   CalendarDays,
+  MapPin,
   Send,
   Users,
   Utensils,
@@ -10,8 +11,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
-import type { CSSProperties } from "react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   RegisterBackgroundMusic,
   useBackgroundMusic,
@@ -22,13 +22,13 @@ import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
 import { PhoneCountryInput } from "@/components/site/phone-country-input";
 import { SaveDateSection } from "@/components/site/save-date-section";
+import { SlotImage } from "@/components/site/slot-image";
 import { StorySection } from "@/components/site/story-section";
 import {
   discoverMedanHref,
   invitationHref,
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
-import { imageCropStyleVars } from "@/lib/image-crop";
 import { copy, text } from "@/lib/i18n";
 import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import { isRsvpClosed } from "@/lib/rsvp";
@@ -55,6 +55,8 @@ export function SelfRegisterInvitePage({
   const [hasOpenedInvitation, setHasOpenedInvitation] = useState(false);
   const [savedInvitation, setSavedInvitation] =
     useState<InvitationGroup | null>(null);
+  // Whether the RSVP was just submitted — shows success card instead of redirecting immediately
+  const [rsvpJustSaved, setRsvpJustSaved] = useState(false);
   const [showRsvpForm, setShowRsvpForm] = useState(false);
   const [verifiedEmail, setVerifiedEmail] = useState("");
   const [isResolvingInvite, setIsResolvingInvite] = useState(false);
@@ -77,6 +79,12 @@ export function SelfRegisterInvitePage({
   const currentInvitationHref = invitationHref(activeCode, inviteType.flow);
   const currentTravelHref = travelAccommodationHref(activeCode, inviteType.flow);
   const currentDiscoverHref = discoverMedanHref(activeCode, inviteType.flow);
+  const isTravelFlow = inviteType.flow === "overseas" || inviteType.flow === "family";
+
+  const rsvpClosed = useMemo(
+    () => isRsvpClosed(content.rsvpDeadline),
+    [content.rsvpDeadline],
+  );
 
   function begin() {
     setHasOpenedInvitation(true);
@@ -91,6 +99,7 @@ export function SelfRegisterInvitePage({
 
   function revealForm() {
     setShowRsvpForm(true);
+    setRsvpJustSaved(false);
     void resolveExistingSession();
     window.setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -156,15 +165,31 @@ export function SelfRegisterInvitePage({
     setVerifiedEmail(email);
   }
 
+  /**
+   * Called when SelfRegisterForm completes successfully.
+   * Shows the success card (with a "View my invitation" button) instead of
+   * an immediate hard redirect — preserving client nav + music.
+   */
   function openSavedInvitation(invitation: InvitationGroup) {
     setSavedInvitation(invitation);
+    setRsvpJustSaved(true);
+    setShowRsvpForm(false);
     if (inviteType.flow === "overseas" || inviteType.flow === "family") {
       window.localStorage.setItem(
         `edward-jessica-${inviteType.flow}-invite-code`,
         invitation.code,
       );
     }
-    router.push(`/invite/${encodeURIComponent(invitation.code)}` as Route);
+    window.setTimeout(() => {
+      document
+        .getElementById("self-rsvp-success")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
+  }
+
+  function navigateToPersonalInvite() {
+    if (!savedInvitation) return;
+    router.push(`/invite/${encodeURIComponent(savedInvitation.code)}` as Route);
   }
 
   useEffect(() => {
@@ -201,15 +226,15 @@ export function SelfRegisterInvitePage({
       />
       {hasOpenedInvitation ? <FloatingRsvpButton /> : null}
       <RegisterBackgroundMusic src={content.musicUrl} />
+
+      {/* Hero — full-bleed, uses SlotImage for mobile/desktop source resolution */}
       <section className="hero">
-        <Image
-          className="hero-image"
-          src={content.heroImageUrl}
+        <SlotImage
+          content={content}
+          slot="hero"
           alt=""
-          fill
+          className="hero-image"
           priority
-          sizes="100vw"
-          style={imageCropStyleVars(content, "hero") as CSSProperties}
         />
         <div className="hero-content">
           <div>
@@ -233,22 +258,15 @@ export function SelfRegisterInvitePage({
         </div>
       </section>
 
+      {/* F3: all content sections wrapped in .page-shell */}
       <section className="section" ref={detailsRef}>
-        <div className="container">
+        <div className="page-shell">
           <div className="centered-section-copy">
             <p className="eyebrow">{c.details}</p>
             <h2 className="title serif">{text(content.introText, language)}</h2>
-            <figure className="invitation-section-photo">
-              <Image
-                src={content.invitationImageUrl}
-                alt=""
-                fill
-                sizes="(max-width: 860px) calc(100vw - 48px), 980px"
-                style={
-                  imageCropStyleVars(content, "invitation") as CSSProperties
-                }
-              />
-            </figure>
+            <div style={{ marginTop: "clamp(42px, 7vw, 76px)" }}>
+              <SlotImage content={content} slot="invitation" alt="" />
+            </div>
           </div>
         </div>
       </section>
@@ -257,7 +275,7 @@ export function SelfRegisterInvitePage({
 
       {content.events.length ? (
         <section className="section">
-          <div className="container">
+          <div className="page-shell">
             <div className="section-heading section-heading-centered">
               <div>
                 <p className="eyebrow">{c.schedule}</p>
@@ -277,30 +295,51 @@ export function SelfRegisterInvitePage({
                       <p className="muted">{text(eventItem.note, language)}</p>
                     ) : null}
                   </div>
-                  <a
-                    className="button button-muted"
-                    href="/api/calendar"
-                    download="edward-jessica-wedding.ics"
-                  >
-                    <CalendarDays size={17} />
-                    {c.addFullSchedule}
-                  </a>
+                  {/* F6: per-event action is the location link only */}
+                  {eventItem.mapUrl ? (
+                    <div
+                      style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                    >
+                      <a
+                        className="button button-muted"
+                        href={eventItem.mapUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <MapPin size={17} />
+                        {c.location}
+                      </a>
+                    </div>
+                  ) : null}
                 </article>
               ))}
+            </div>
+            {/* One Add to Calendar (full .ics) below the whole schedule */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                marginTop: 24,
+              }}
+            >
+              <a
+                className="button button-muted"
+                href="/api/calendar"
+                download="edward-jessica-wedding.ics"
+              >
+                <CalendarDays size={17} />
+                {c.addToCalendar}
+              </a>
             </div>
           </div>
         </section>
       ) : null}
 
-      <StorySection
-        imageCrop={content.imageCrops.story}
-        imageUrl={content.storyImageUrl}
-        language={language}
-      />
+      <StorySection content={content} language={language} />
 
       {content.gallery.length ? (
         <section className="section">
-          <div className="container">
+          <div className="page-shell">
             <div className="section-heading">
               <div>
                 <p className="eyebrow">{c.gallery}</p>
@@ -325,9 +364,9 @@ export function SelfRegisterInvitePage({
       ) : null}
 
       <section className="section" id="rsvp">
-        <div className="container">
+        <div className="page-shell">
           {/* E1-4: show a closed notice when the invite type is disabled */}
-          {!inviteType.isEnabled ? (
+          {!inviteType.isEnabled || rsvpClosed ? (
             <div className="rsvp-callout">
               <div>
                 <p className="eyebrow">{c.registerRsvp}</p>
@@ -338,14 +377,16 @@ export function SelfRegisterInvitePage({
                     lineHeight: 0.95,
                   }}
                 >
-                  {language === "id"
+                  {rsvpClosed ? c.rsvpClosed : (language === "id"
                     ? "Pendaftaran ditutup"
-                    : "Registration closed"}
+                    : "Registration closed")}
                 </h2>
                 <p className="muted" style={{ marginTop: 14 }}>
-                  {language === "id"
-                    ? "Pendaftaran untuk undangan ini sudah ditutup. Mohon hubungi kami jika ada pertanyaan."
-                    : "Registration for this invitation is no longer available. Please contact us if you have any questions."}
+                  {rsvpClosed
+                    ? c.rsvpClosedContact
+                    : language === "id"
+                      ? "Pendaftaran untuk undangan ini sudah ditutup. Mohon hubungi kami jika ada pertanyaan."
+                      : "Registration for this invitation is no longer available. Please contact us if you have any questions."}
                 </p>
               </div>
             </div>
@@ -361,15 +402,20 @@ export function SelfRegisterInvitePage({
                       lineHeight: 0.95,
                     }}
                   >
-                    {savedInvitation ? c.rsvpSavedTitle : c.readyToRsvp}
+                    {savedInvitation && !rsvpJustSaved ? c.rsvpSavedTitle : c.readyToRsvp}
                   </h2>
                   <p className="muted" style={{ marginTop: 14 }}>
-                    {savedInvitation
+                    {savedInvitation && !rsvpJustSaved
                       ? c.receivedRsvp
                       : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
                   </p>
+                  {/* Countdown line */}
+                  <SelfRegRsvpCountdownLine
+                    deadlineIso={content.rsvpDeadline}
+                    language={language}
+                  />
                 </div>
-                {savedInvitation ? null : (
+                {savedInvitation && !rsvpJustSaved ? null : (
                   <button
                     className="button button-primary rsvp-main-button"
                     type="button"
@@ -381,8 +427,24 @@ export function SelfRegisterInvitePage({
                 )}
               </div>
 
-              {/* E1-6: email confirmation notice when email could not be sent */}
-              {emailStatus && emailStatus !== "sent" ? (
+              {/* Success card shown immediately after registration */}
+              {rsvpJustSaved && savedInvitation ? (
+                <div id="self-rsvp-success" style={{ marginTop: 24 }}>
+                  <SelfRegisterSuccessCard
+                    content={content}
+                    invitation={savedInvitation}
+                    invitationHref={currentInvitationHref}
+                    language={language}
+                    emailStatus={emailStatus}
+                    isTravelFlow={isTravelFlow}
+                    travelHref={currentTravelHref}
+                    onViewInvite={navigateToPersonalInvite}
+                  />
+                </div>
+              ) : null}
+
+              {/* E1-6: email confirmation notice when email could not be sent (outside success card) */}
+              {!rsvpJustSaved && emailStatus && emailStatus !== "sent" ? (
                 <p className="muted" style={{ marginTop: 14 }}>
                   {language === "id"
                     ? "Kami tidak dapat mengirim email konfirmasi — mohon simpan tautan halaman ini."
@@ -390,7 +452,7 @@ export function SelfRegisterInvitePage({
                 </p>
               ) : null}
 
-              {showRsvpForm || savedInvitation ? (
+              {showRsvpForm && !rsvpJustSaved ? (
                 <div
                   ref={formRef}
                   id="self-rsvp-form"
@@ -407,18 +469,14 @@ export function SelfRegisterInvitePage({
                       )}
                     </p>
                   </div>
-                  {savedInvitation || isResolvingInvite ? (
+                  {isResolvingInvite ? (
                     <div className="invite-panel">
                       <p className="eyebrow">{c.rsvpSavedTitle}</p>
                       <h3 className="serif" style={{ fontSize: "2rem", marginTop: 10 }}>
-                        {isResolvingInvite
-                          ? c.checkingExistingRsvp
-                          : c.openingPersonalInvite}
+                        {c.checkingExistingRsvp}
                       </h3>
                       <p className="muted" style={{ marginTop: 12 }}>
-                        {savedInvitation
-                          ? c.receivedRsvp
-                          : c.verifyEmailIntro}
+                        {c.verifyEmailIntro}
                       </p>
                     </div>
                   ) : verifiedEmail ? (
@@ -780,4 +838,174 @@ function formatDeadlineDate(
     year: "numeric",
     timeZone: timezone,
   }).format(new Date(deadlineIso));
+}
+
+/** Days-left countdown for the self-register page. */
+function SelfRegRsvpCountdownLine({
+  deadlineIso,
+  language,
+}: {
+  deadlineIso: string;
+  language: Language;
+}) {
+  const c = copy[language];
+  const now = new Date();
+  const deadline = new Date(deadlineIso);
+  const msLeft = deadline.getTime() - now.getTime();
+  if (msLeft <= 0) return null;
+  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+  const template = daysLeft <= 14 ? c.daysLeftUrgent : c.daysLeftRsvp;
+  const label = template.replace("{d}", String(daysLeft));
+  return (
+    <p className="muted" style={{ marginTop: 10, fontWeight: 700 }}>
+      {label}
+    </p>
+  );
+}
+
+/**
+ * Success card shown after self-registration completes.
+ * The guest sees their summary here and clicks "View my invitation"
+ * to navigate to their personal invite page.
+ */
+function SelfRegisterSuccessCard({
+  content,
+  invitation,
+  invitationHref,
+  language,
+  emailStatus,
+  isTravelFlow,
+  travelHref,
+  onViewInvite,
+}: {
+  content: WeddingContent;
+  invitation: InvitationGroup;
+  invitationHref: string;
+  language: Language;
+  emailStatus: "sent" | "failed" | "skipped" | null;
+  isTravelFlow: boolean;
+  travelHref: string;
+  onViewInvite: () => void;
+}) {
+  const c = copy[language];
+  const attending = invitation.rsvp.status === "attending";
+  const heading = attending
+    ? c.successAttendingHeading
+    : c.successDeclinedHeading;
+  const attendingEvents = content.events.filter(
+    (ev) => invitation.rsvp.eventAttendance[ev.key],
+  );
+  const guestNames = invitation.guests.map((g) => g.name).filter(Boolean);
+
+  return (
+    <div
+      className="invite-panel"
+      style={{
+        padding: "clamp(24px, 5vw, 44px)",
+        display: "grid",
+        gap: 20,
+        textAlign: "center",
+      }}
+    >
+      {/* Flourish */}
+      <div style={{ fontSize: "2.2rem", lineHeight: 1 }}>✦</div>
+
+      <div>
+        <h3
+          className="serif"
+          style={{ fontSize: "clamp(1.6rem, 4vw, 2.4rem)", lineHeight: 1.1 }}
+        >
+          {heading}
+        </h3>
+        {attending ? (
+          <p className="muted" style={{ marginTop: 10 }}>
+            {c.successAttendingSub}
+          </p>
+        ) : null}
+      </div>
+
+      {/* Summary */}
+      {attending && (guestNames.length > 0 || attendingEvents.length > 0) ? (
+        <div
+          style={{
+            borderTop: "1px solid var(--line)",
+            paddingTop: 16,
+            display: "grid",
+            gap: 10,
+            textAlign: "left",
+          }}
+        >
+          {guestNames.length > 0 ? (
+            <p className="muted" style={{ fontSize: "0.9rem" }}>
+              <strong style={{ color: "var(--ink)" }}>
+                {language === "id" ? "Tamu" : "Guests"}:
+              </strong>{" "}
+              {guestNames.join(", ")}
+            </p>
+          ) : null}
+          {attendingEvents.length > 0 ? (
+            <p className="muted" style={{ fontSize: "0.9rem" }}>
+              <strong style={{ color: "var(--ink)" }}>
+                {language === "id" ? "Acara" : "Events"}:
+              </strong>{" "}
+              {attendingEvents.map((ev) => text(ev.shortTitle, language)).join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Email delivery warning inside card */}
+      {emailStatus && emailStatus !== "sent" ? (
+        <p className="muted" style={{ fontSize: "0.88rem" }}>
+          {language === "id"
+            ? "Kami tidak dapat mengirim email konfirmasi — mohon simpan tautan halaman ini."
+            : "We could not send your confirmation email — please save this page link."}
+        </p>
+      ) : null}
+
+      {/* Save this link */}
+      <div
+        style={{
+          borderTop: "1px solid var(--line)",
+          paddingTop: 16,
+          display: "grid",
+          gap: 6,
+        }}
+      >
+        <p className="eyebrow" style={{ fontSize: "0.72rem" }}>
+          {c.viewYourInvite}
+        </p>
+        <p style={{ color: "var(--muted)", fontSize: "0.88rem" }}>
+          {language === "id"
+            ? "Simpan tautan ini untuk mengakses undangan Anda kapan saja."
+            : "Save this link to access your invitation anytime."}
+        </p>
+      </div>
+
+      {/* Actions */}
+      <div className="confirmation-actions" style={{ justifyContent: "center" }}>
+        {/* Primary: view invitation — navigates to personal page */}
+        <button
+          className="button button-primary"
+          type="button"
+          onClick={onViewInvite}
+        >
+          {c.viewYourInvite}
+        </button>
+        <a
+          className="button button-muted"
+          href="/api/calendar"
+          download="edward-jessica-wedding.ics"
+        >
+          <CalendarDays size={17} />
+          {c.addToCalendar}
+        </a>
+        {isTravelFlow && attending ? (
+          <Link className="button button-brown" href={travelHref as Route}>
+            {c.submitTravelPlans}
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  );
 }

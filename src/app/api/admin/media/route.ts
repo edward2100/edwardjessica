@@ -5,6 +5,7 @@ import {
   addMediaAsset,
   getDraftContent,
   removeMediaAssetFromDraft,
+  saveDraftContent,
   setDraftDiscoverItemImage,
   setDraftImageCrop,
   setDraftImageSlot,
@@ -13,7 +14,7 @@ import { isSupabaseConfigured } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase";
 import { compressWeddingImage } from "@/lib/image-compression";
 import { normalizeImageCrop } from "@/lib/image-crop";
-import type { ImageCropSettings, MediaAsset } from "@/lib/types";
+import type { ImageCropSettings, ImageCropSlot, ImageFrameRatio, MediaAsset, WeddingContent } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,7 @@ const imageSlots = [
   "discoverCafe",
 ] as const;
 type ImageSlot = (typeof imageSlots)[number];
+const validFrameRatios: ImageFrameRatio[] = ["square", "portrait", "landscape"];
 
 function normalizeKind(
   value: FormDataEntryValue | string | null,
@@ -83,12 +85,19 @@ function validateFileKind(file: File, kind: MediaAsset["kind"]) {
 
 function normalizeSlot(value: FormDataEntryValue | string | null) {
   const slot = String(value || "");
+  // "ogImage" is a special slot stored in content.images but not in imageCrops
+  if (slot === "ogImage") return "ogImage" as const;
   return imageSlots.includes(slot as ImageSlot) ? (slot as ImageSlot) : null;
 }
 
 function normalizeBodySlot(value: unknown) {
   const slot = String(value || "");
   return imageSlots.includes(slot as ImageSlot) ? (slot as ImageSlot) : null;
+}
+
+function normalizeTarget(value: unknown): "desktop" | "mobile" | null {
+  const v = String(value || "");
+  return v === "desktop" || v === "mobile" ? v : null;
 }
 
 function safeStorageName(fileName: string) {
@@ -165,6 +174,7 @@ export async function POST(request: Request) {
     const file = formData.get("file") as File | null;
     const kind = normalizeKind(formData.get("kind"));
     const slot = normalizeSlot(formData.get("slot"));
+    const target = normalizeTarget(formData.get("target"));
     const discoverItemId = String(formData.get("discoverItemId") || "").trim();
     if (!file)
       return NextResponse.json({ error: "File is required." }, { status: 400 });
@@ -183,7 +193,9 @@ export async function POST(request: Request) {
     }
 
     const uploadedAt = Date.now();
-    const url = await uploadToStorage(file, kind);
+    // For ogImage and non-hero slots, use gallery kind for storage
+    const storageKind: MediaAsset["kind"] = kind;
+    const url = await uploadToStorage(file, storageKind);
     uploadedUrl = url;
     const sortOrder = Math.floor(uploadedAt / 1000);
     const asset: MediaAsset = {
@@ -201,11 +213,37 @@ export async function POST(request: Request) {
     const savedAsset = await addMediaAsset(asset, {
       applyToContent: !slot && !discoverItemId,
     });
+
+    // OG image: stored in content.images.ogImage (no crop slot)
+    if (slot === "ogImage") {
+      const content = await getDraftContent();
+      const updatedContent: WeddingContent = {
+        ...content,
+        images: { ...content.images, ogImage: url },
+      };
+      await saveDraftContent(updatedContent);
+      return NextResponse.json({ asset: savedAsset, content: updatedContent });
+    }
+
     if (slot) {
-      return NextResponse.json({
-        asset: savedAsset,
-        content: await setDraftImageSlot(slot, url),
-      });
+      // Mobile target: store in mobileImages map
+      if (target === "mobile") {
+        const content = await getDraftContent();
+        const updatedContent: WeddingContent = {
+          ...content,
+          mobileImages: { ...content.mobileImages, [slot]: url },
+        };
+        await saveDraftContent(updatedContent);
+        return NextResponse.json({ asset: savedAsset, content: updatedContent });
+      }
+      // Desktop target (or no target): store in images map + legacy field
+      const content = await setDraftImageSlot(slot, url);
+      const updatedContent: WeddingContent = {
+        ...content,
+        images: { ...content.images, [slot]: url },
+      };
+      await saveDraftContent(updatedContent);
+      return NextResponse.json({ asset: savedAsset, content: updatedContent });
     }
     if (discoverItemId) {
       return NextResponse.json({
@@ -236,13 +274,16 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { action, crop, slot, url } = (await request.json()) as {
+    const body = (await request.json()) as {
       action?: string;
       crop?: ImageCropSettings;
-      slot?: ImageSlot;
+      ratio?: ImageFrameRatio;
+      slot?: ImageCropSlot | string;
       url?: string;
     };
-    const safeSlot = normalizeBodySlot(slot);
+    const { action, crop, url } = body;
+    const safeSlot = normalizeBodySlot(body.slot);
+
     if (action === "setImageCrop") {
       if (!safeSlot) {
         return NextResponse.json(
@@ -257,6 +298,57 @@ export async function PUT(request: Request) {
         ),
       });
     }
+
+    // F4: set frame ratio for a slot
+    if (action === "setImageFrame") {
+      if (!safeSlot) {
+        return NextResponse.json(
+          { error: "Image slot is required." },
+          { status: 400 },
+        );
+      }
+      const ratio = body.ratio;
+      if (!ratio || !validFrameRatios.includes(ratio)) {
+        return NextResponse.json(
+          { error: "Valid ratio (square, portrait, landscape) is required." },
+          { status: 400 },
+        );
+      }
+      const content = await getDraftContent();
+      const updatedContent: WeddingContent = {
+        ...content,
+        imageFrames: { ...content.imageFrames, [safeSlot]: ratio },
+      };
+      await saveDraftContent(updatedContent);
+      return NextResponse.json({ content: updatedContent });
+    }
+
+    // F2: remove mobile image override for a slot
+    if (action === "removeMobileSlot") {
+      if (!safeSlot) {
+        return NextResponse.json(
+          { error: "Image slot is required." },
+          { status: 400 },
+        );
+      }
+      const content = await getDraftContent();
+      const mobileImages = { ...content.mobileImages };
+      delete mobileImages[safeSlot];
+      const updatedContent: WeddingContent = { ...content, mobileImages };
+      await saveDraftContent(updatedContent);
+      return NextResponse.json({ content: updatedContent });
+    }
+
+    // OG: remove OG image
+    if (action === "removeOgImage") {
+      const content = await getDraftContent();
+      const images = { ...content.images };
+      delete images.ogImage;
+      const updatedContent: WeddingContent = { ...content, images };
+      await saveDraftContent(updatedContent);
+      return NextResponse.json({ content: updatedContent });
+    }
+
     if (!url)
       return NextResponse.json(
         { error: "Media URL is required." },

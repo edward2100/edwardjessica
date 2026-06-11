@@ -1,4 +1,5 @@
 import type { WeddingContent } from "@/lib/types";
+// Satisfies the updated WeddingContent shape including images, mobileImages, imageFrames
 import { createDefaultDiscoverMedanContent } from "@/lib/discover-medan-content";
 
 export const EVENT_DATE = "2026-12-12";
@@ -77,6 +78,9 @@ export const weddingContent: WeddingContent = {
   discoverCafeImageUrl:
     "https://gcdydpigzlmregzcmtnv.supabase.co/storage/v1/object/public/wedding-media/gallery/optimized/invitation-section-20260507-196-1800-c45e87d2f4.webp",
   imageCrops: {},
+  images: {},
+  mobileImages: {},
+  imageFrames: {},
   discoverMedan: createDefaultDiscoverMedanContent(),
   publicInviteTypes: [
     {
@@ -182,6 +186,7 @@ export const weddingContent: WeddingContent = {
         en: "Socks are required at the venue.",
         id: "Kaus kaki diwajibkan di lokasi acara.",
       },
+      // mapUrl intentionally empty until Edward fills it in
     },
     {
       key: "tea_lunch",
@@ -195,6 +200,7 @@ export const weddingContent: WeddingContent = {
       venueName: "D’Heritage - Grand City Hall Medan",
       venueAddress:
         "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia",
+      mapUrl: "https://maps.app.goo.gl/hPL5x2kPToUaAK946",
     },
     {
       key: "dinner",
@@ -209,6 +215,7 @@ export const weddingContent: WeddingContent = {
         en: "Guest arrival starts at 6:30 PM; dinner begins at 7:00 PM.",
         id: "Kedatangan tamu mulai pukul 18.30; makan malam dimulai pukul 19.00.",
       },
+      mapUrl: "https://maps.app.goo.gl/hPL5x2kPToUaAK946",
     },
   ],
 };

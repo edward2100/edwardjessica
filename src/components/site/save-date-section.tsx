@@ -23,7 +23,7 @@ export function SaveDateSection({
 }) {
   return (
     <section className="section save-date-section">
-      <div className="container">
+      <div className="page-shell">
         <div className="centered-section-copy">
           <p className="eyebrow">{labels.saveTheDate}</p>
           <div className="invitation-meta-line">

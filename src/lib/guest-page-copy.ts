@@ -188,9 +188,9 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
 export const discoverMedanCopy: Record<Language, DiscoverMedanCopy> = {
   en: {
     kicker: "",
-    title: "Explore Medan",
+    title: "Discover Medan",
     subtitle: "A personal food guide from the city that shaped us.",
-    viewGuide: "Explore the guide",
+    viewGuide: "Discover the guide",
     introEyebrow: "Welcome to Medan",
     introTitle: "A city best discovered one bite at a time",
     introParagraphs: [
@@ -287,9 +287,9 @@ export const discoverMedanCopy: Record<Language, DiscoverMedanCopy> = {
   },
   id: {
     kicker: "",
-    title: "Jelajahi Medan",
+    title: "Discover Medan",
     subtitle: "Panduan kuliner pribadi dari kota yang membentuk cerita kami.",
-    viewGuide: "Jelajahi panduan",
+    viewGuide: "Temukan panduan",
     introEyebrow: "Selamat datang di Medan",
     introTitle: "Kota yang paling indah dinikmati satu suapan demi satu suapan",
     introParagraphs: [

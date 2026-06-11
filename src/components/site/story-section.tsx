@@ -1,9 +1,6 @@
-import Image from "next/image";
-import type { CSSProperties } from "react";
 import { text } from "@/lib/i18n";
-import { imageCropPosition, imageCropScale } from "@/lib/image-crop";
-import type { ImageCropSettings, Language, LocalizedString } from "@/lib/types";
-import { weddingContent } from "@/lib/wedding-content";
+import type { Language, LocalizedString, WeddingContent } from "@/lib/types";
+import { SlotImage } from "@/components/site/slot-image";
 
 type StorySpeaker = "him" | "her";
 
@@ -54,35 +51,21 @@ const storyLabels: Record<StorySpeaker, LocalizedString> = {
 };
 
 export function StorySection({
-  imageCrop,
-  imageUrl = weddingContent.storyImageUrl,
+  content,
   language
 }: {
-  imageCrop?: ImageCropSettings;
-  imageUrl?: string;
+  content: WeddingContent;
   language: Language;
 }) {
-  const imageStyle = {
-    "--image-position-desktop": imageCropPosition(imageCrop, "desktop"),
-    "--image-position-mobile": imageCropPosition(imageCrop, "mobile"),
-    "--image-origin-desktop": imageCropPosition(imageCrop, "desktop"),
-    "--image-origin-mobile": imageCropPosition(imageCrop, "mobile"),
-    "--image-scale-desktop": String(imageCropScale(imageCrop, "desktop")),
-    "--image-scale-mobile": String(imageCropScale(imageCrop, "mobile")),
-  } as CSSProperties;
-
   return (
     <section className="section">
-      <div className="container story-shell">
-        <figure className="story-photo">
-          <Image
-            src={imageUrl}
-            alt="Edward and Jessica in a green mountain landscape"
-            fill
-            sizes="(max-width: 860px) 100vw, 1120px"
-            style={imageStyle}
-          />
-        </figure>
+      <div className="page-shell story-shell">
+        <SlotImage
+          content={content}
+          slot="story"
+          alt="Edward and Jessica in a green mountain landscape"
+          className="story-photo"
+        />
 
         <div className="story-intro">
           <p className="eyebrow">{language === "id" ? "Kisah Kami" : "Our Story"}</p>

@@ -84,7 +84,7 @@ export const copy = {
     overseasTravelTitle: "Planning your trip to Medan",
     overseasTravelCopy:
       "We will add a travel form here for arrival dates, departure dates, and accommodation notes.",
-    medanGuide: "Medan Guide",
+    medanGuide: "Discover Medan",
     medanGuideTitle: "A little guide for your wedding trip",
     medanGuideCopy:
       "Soon this section will become a small wedding newsletter with food, places, and family-friendly ideas around Medan.",
@@ -108,6 +108,24 @@ export const copy = {
     parents: "With the blessing of our families",
     thanks: "Thank you. Your RSVP has been saved.",
     music: "Music",
+    // F6: location button
+    location: "Location",
+    // OTP resend
+    resendCode: "Resend code",
+    resendCodeIn: "Resend in {s}s",
+    // Countdown
+    daysLeftRsvp: "{d} days left to RSVP",
+    daysLeftUrgent: "RSVP closes soon — {d} days left",
+    // RSVP closed state
+    rsvpClosed: "RSVP is now closed",
+    rsvpClosedContact: "Please contact us directly for any changes.",
+    // Success states
+    successAttendingHeading: "Thank you — your RSVP is confirmed.",
+    successAttendingSub: "See you on 12 December 2026",
+    successDeclinedHeading: "Thank you for letting us know — we will miss you.",
+    // Travel submitted
+    travelSubmittedNote: "Your travel plans have been received.",
+    updateTravelPlans: "Update travel plans",
   },
   id: {
     weddingOf: "Pernikahan",
@@ -184,7 +202,7 @@ export const copy = {
     overseasTravelTitle: "Merencanakan perjalanan ke Medan",
     overseasTravelCopy:
       "Kami akan menambahkan formulir perjalanan di sini untuk tanggal kedatangan, tanggal kepulangan, dan catatan akomodasi.",
-    medanGuide: "Panduan Medan",
+    medanGuide: "Discover Medan",
     medanGuideTitle: "Panduan kecil untuk perjalanan pernikahan Anda",
     medanGuideCopy:
       "Bagian ini akan menjadi newsletter kecil berisi makanan, tempat, dan ide kegiatan keluarga di sekitar Medan.",
@@ -208,5 +226,24 @@ export const copy = {
     parents: "Dengan restu keluarga kami",
     thanks: "Terima kasih. RSVP Anda sudah tersimpan.",
     music: "Musik",
+    // F6: location button — ID same as EN per plan (copy kept consistent)
+    location: "Lokasi",
+    // OTP resend — ID NEEDS REVIEW by Edward
+    resendCode: "Kirim ulang kode",
+    resendCodeIn: "Kirim ulang dalam {s} dtk",
+    // Countdown — ID NEEDS REVIEW by Edward
+    daysLeftRsvp: "{d} hari lagi untuk RSVP",
+    daysLeftUrgent: "RSVP segera ditutup — {d} hari lagi",
+    // RSVP closed state — ID NEEDS REVIEW by Edward
+    rsvpClosed: "RSVP telah ditutup",
+    rsvpClosedContact: "Silakan hubungi kami langsung untuk perubahan.",
+    // Success states — ID NEEDS REVIEW by Edward
+    successAttendingHeading: "Terima kasih — RSVP Anda telah dikonfirmasi.",
+    successAttendingSub: "Sampai jumpa pada 12 Desember 2026",
+    successDeclinedHeading:
+      "Terima kasih telah memberi tahu — kami akan merindukan Anda.",
+    // Travel submitted — ID NEEDS REVIEW by Edward
+    travelSubmittedNote: "Rencana perjalanan Anda telah kami terima.",
+    updateTravelPlans: "Perbarui rencana perjalanan",
   },
 } as const;

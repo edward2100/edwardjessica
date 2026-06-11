@@ -85,6 +85,10 @@ function normalizeWeddingEvents(
       date: providedEvent?.date || defaultEvent.date,
       startTime: providedEvent?.startTime || defaultEvent.startTime,
       endTime: providedEvent?.endTime || defaultEvent.endTime,
+      // mapUrl: prefer stored value, then default (which may be undefined for holy_matrimony)
+      mapUrl: providedEvent?.mapUrl !== undefined
+        ? (providedEvent.mapUrl || undefined)
+        : defaultEvent.mapUrl,
     };
   });
 }
@@ -141,6 +145,10 @@ function normalizeWeddingContent(
       content.heroImageUrl ||
       weddingContent.discoverCafeImageUrl,
     imageCrops: normalizeImageCrops(content.imageCrops),
+    // New fields — safe defaults so old published JSON renders identically
+    images: content.images ?? weddingContent.images,
+    mobileImages: content.mobileImages ?? weddingContent.mobileImages,
+    imageFrames: content.imageFrames ?? weddingContent.imageFrames,
     discoverMedan: normalizeDiscoverMedanContent(content.discoverMedan),
     publicInviteTypes: normalizePublicInviteTypes(content.publicInviteTypes),
     gallery: content.gallery || weddingContent.gallery,
@@ -185,6 +193,7 @@ function normalizeDiscoverMedanItem(
     name: normalizeLocalizedString(item.name, fallback.name),
     note: normalizeLocalizedString(item.note, fallback.note),
     imageUrl: cleanOptionalText(String(item.imageUrl || "")),
+    mapUrl: cleanOptionalText(String(item.mapUrl || "")),
   };
 }
 
@@ -1468,11 +1477,55 @@ export async function submitTravelPlan(submission: TravelPlanSubmission) {
   return clone(travelPlan);
 }
 
+export async function getTravelPlans(): Promise<TravelPlan[]> {
+  if (isSupabaseConfigured()) {
+    const supabase = createSupabaseServiceClient();
+    if (!supabase) throw new Error("Supabase client unavailable");
+    const { data, error } = await supabase
+      .from("travel_plans")
+      .select(
+        "id,invitation_group_id,arrival_at,departure_at,accommodation_option,preferred_roommates,submitted_at,updated_at",
+      )
+      .order("arrival_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data || []).map(mapTravelPlanRow);
+  }
+  return clone(
+    [...previewStore().travelPlans].sort(
+      (a, b) => new Date(a.arrivalAt).getTime() - new Date(b.arrivalAt).getTime(),
+    ),
+  );
+}
+
+export async function getTravelPlanByInvitationId(
+  invitationGroupId: string,
+): Promise<TravelPlan | null> {
+  if (isSupabaseConfigured()) {
+    const supabase = createSupabaseServiceClient();
+    if (!supabase) throw new Error("Supabase client unavailable");
+    const { data, error } = await supabase
+      .from("travel_plans")
+      .select(
+        "id,invitation_group_id,arrival_at,departure_at,accommodation_option,preferred_roommates,submitted_at,updated_at",
+      )
+      .eq("invitation_group_id", invitationGroupId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data) return mapTravelPlanRow(data);
+    return null;
+  }
+  const plan = previewStore().travelPlans.find(
+    (item) => item.invitationGroupId === invitationGroupId,
+  );
+  return plan ? clone(plan) : null;
+}
+
 export async function getAdminSnapshot(): Promise<AdminSnapshot> {
   const content = await getDraftContent();
   const invitations = await getInvitations();
   const history = await getHistory();
   const messageLogs = await getAdminMessageLogs();
+  const travelPlans = await getTravelPlans();
 
   // B7: compute distinct invite-open count from events table when Supabase is available
   let distinctOpenCount: number | undefined;
@@ -1498,6 +1551,7 @@ export async function getAdminSnapshot(): Promise<AdminSnapshot> {
     invitations,
     history,
     messageLogs,
+    travelPlans,
     stats: calculateStats(invitations, history, distinctOpenCount),
   };
 }

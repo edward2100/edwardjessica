@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import type { CSSProperties } from "react";
 import { useRef, useState } from "react";
 import {
   RegisterBackgroundMusic,
@@ -9,12 +8,12 @@ import {
 } from "@/components/site/background-music";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { SlotImage } from "@/components/site/slot-image";
 import {
   discoverMedanHref,
   invitationHref,
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
-import { imageCropStyleVars } from "@/lib/image-crop";
 import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import type {
   DiscoverMedanGuideItem,
@@ -62,15 +61,14 @@ export function DiscoverMedanPage({
         travelHref={travelAccommodationHref(activeCode, activeFlow)}
       />
       <RegisterBackgroundMusic src={content.musicUrl} />
+      {/* F5: hero title always "Discover Medan" — sourced from content.discoverMedan */}
       <section className="hero travel-hero discover-hero">
-        <Image
-          className="hero-image"
-          src={content.discoverHeroImageUrl || content.travelHeroImageUrl}
+        <SlotImage
+          content={content}
+          slot="discoverHero"
           alt=""
-          fill
+          className="hero-image"
           priority
-          sizes="100vw"
-          style={imageCropStyleVars(content, "discoverHero") as CSSProperties}
         />
         <div className="hero-content travel-hero-content">
           <div className="travel-hero-inner">
@@ -86,7 +84,8 @@ export function DiscoverMedanPage({
                 {c.heroKicker[language]}
               </p>
             ) : null}
-            <h1 className="hero-title serif">{c.heroTitle[language]}</h1>
+            {/* F5: page title is "Discover Medan" as a proper noun in both languages */}
+            <h1 className="hero-title serif">Discover Medan</h1>
             <p className="hero-meta">{c.heroSubtitle[language]}</p>
             <div className="hero-actions travel-hero-actions">
               <button
@@ -102,8 +101,9 @@ export function DiscoverMedanPage({
         </div>
       </section>
 
+      {/* F3: all content sections inside .page-shell */}
       <section className="section" ref={guideRef}>
-        <div className="container discover-section-stack">
+        <div className="page-shell discover-section-stack">
           <article className="discover-intro">
             <div className="discover-intro-copy">
               <p className="eyebrow">{c.introEyebrow[language]}</p>
@@ -114,24 +114,19 @@ export function DiscoverMedanPage({
                 ))}
               </div>
             </div>
-            <figure className="discover-intro-photo">
-              <Image
-                src={content.discoverIntroImageUrl}
-                alt=""
-                fill
-                sizes="(max-width: 860px) calc(100vw - 48px), 440px"
-                style={
-                  imageCropStyleVars(content, "discoverIntro") as CSSProperties
-                }
-              />
-            </figure>
+            {/* F3: adopt SlotImage for discoverIntro; className applied to slot-image-frame */}
+            <SlotImage
+              content={content}
+              slot="discoverIntro"
+              alt=""
+              className="discover-intro-photo"
+            />
           </article>
 
           {c.sections.map((section) => (
             <GuideSection
               cropSlot={sectionImageCropSlot(section.id)}
               content={content}
-              imageUrl={sectionImageUrl(content, section.id)}
               key={section.id}
               language={language}
               section={section}
@@ -141,15 +136,6 @@ export function DiscoverMedanPage({
       </section>
     </main>
   );
-}
-
-function sectionImageUrl(
-  content: WeddingContent,
-  sectionId: DiscoverMedanSectionId,
-) {
-  if (sectionId === "localFood") return content.discoverFoodImageUrl;
-  if (sectionId === "supper") return content.discoverSupperImageUrl;
-  return content.discoverCafeImageUrl;
 }
 
 function sectionImageCropSlot(
@@ -163,13 +149,11 @@ function sectionImageCropSlot(
 function GuideSection({
   content,
   cropSlot,
-  imageUrl,
   language,
   section,
 }: {
   content: WeddingContent;
   cropSlot: ImageCropSlot;
-  imageUrl: string;
   language: Language;
   section: DiscoverMedanGuideSection;
 }) {
@@ -183,15 +167,13 @@ function GuideSection({
         </div>
         <p className="muted">{section.intro[language]}</p>
       </div>
-      <figure className="discover-section-photo">
-        <Image
-          src={imageUrl}
-          alt=""
-          fill
-          sizes="(max-width: 860px) calc(100vw - 48px), 980px"
-          style={imageCropStyleVars(content, cropSlot) as CSSProperties}
-        />
-      </figure>
+      {/* F3: adopt SlotImage for section photos; className applied to slot-image-frame */}
+      <SlotImage
+        content={content}
+        slot={cropSlot}
+        alt=""
+        className="discover-section-photo"
+      />
       <div className="discover-card-grid">
         {section.items.map((item, index) => (
           <DiscoverGuideCard
@@ -237,6 +219,33 @@ function DiscoverGuideCard({
         <div>
           <h3 className="serif">{item.name[language]}</h3>
           <p className="muted">{item.note[language]}</p>
+          {/* F6: map button when item.mapUrl is present */}
+          {item.mapUrl ? (
+            <a
+              className="discover-card-map-link"
+              href={item.mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${item.name[language]} — ${language === "id" ? "buka peta" : "open map"}`}
+            >
+              <svg
+                aria-hidden="true"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ display: "inline", marginRight: 4 }}
+              >
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              {language === "id" ? "Lokasi" : "Location"}
+            </a>
+          ) : null}
         </div>
       </div>
     </article>
