@@ -212,12 +212,12 @@ async function compressImageInBrowser(
   if (!context) throw new Error("Unable to optimize this image.");
   context.drawImage(image, 0, 0, width, height);
 
-  // Near-lossless browser pre-pass so the server (sharp q95) does the real
+  // Max-quality browser pre-pass so the server (sharp q100) does the real
   // encode without compounding compression. Falls to lower steps only if the
   // file would exceed the upload limit.
   const qualities = kind === "hero" || slot === "hero"
-    ? [0.95, 0.9, 0.82]
-    : [0.95, 0.88, 0.8];
+    ? [1, 0.92, 0.85]
+    : [1, 0.9, 0.82];
 
   // Try WebP first (smaller files); fall back to JPEG which is universally supported.
   let bestBlob: Blob | null = null;
