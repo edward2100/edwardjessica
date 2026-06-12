@@ -879,8 +879,9 @@ textarea {
 
 .travel-hero .hero-title {
   max-width: min(980px, calc(100vw - 48px));
-  /* Same standardized scale as the main hero title. */
-  font-size: clamp(2.6rem, 8vw, 6rem);
+  /* Standardized hero scale, but with a lower floor than the main hero:
+     "ACCOMMODATION" at 2.6rem is wider than a phone screen and clips. */
+  font-size: clamp(2.1rem, 8vw, 6rem);
   line-height: 0.92;
   text-align: left;
   text-wrap: balance;
@@ -907,6 +908,20 @@ textarea {
   justify-items: center;
   gap: 20px;
   text-align: center;
+  /* datetime-local inputs have a wide intrinsic min-content width; without
+     min-width: 0 on the grid chain it pushes the card past the column edge
+     on phones. */
+  min-width: 0;
+}
+
+.travel-form,
+.travel-form .form-field {
+  min-width: 0;
+}
+
+.travel-form .input {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .travel-detail-section .title {
