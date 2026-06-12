@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { GuestMusicProvider } from "@/components/site/background-music";
 import { getSiteUrl } from "@/lib/env";
 import "@/app/globals.css";
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" data-scroll-behavior="smooth">
       <body>
         <GuestMusicProvider>{children}</GuestMusicProvider>
+        <Analytics />
       </body>
     </html>
   );
