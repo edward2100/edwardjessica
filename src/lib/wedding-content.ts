@@ -177,7 +177,7 @@ export const weddingContent: WeddingContent = {
         id: "Upacara Pernikahan Buddha",
       },
       shortTitle: {
-        en: "Buddhist Holy Matrimony",
+        en: "Buddhist Wedding Ceremony",
         id: "Pemberkatan Pernikahan Buddha",
       },
       date: EVENT_DATE,
@@ -185,8 +185,8 @@ export const weddingContent: WeddingContent = {
       venueName: "Vihara Sinar Buddha (BLIA) 印尼棉蘭佛光寺",
       venueAddress: "Vihara Sinar Buddha (BLIA) 印尼棉蘭佛光寺",
       note: {
-        en: "Dress Code: Socks required",
-        id: "Aturan Berpakaian: Wajib kaus kaki",
+        en: "Dress Code: Socks required\nTransportation will be provided between Grand City Hall Medan and Vihara Sinar Buddha",
+        id: "Aturan Berpakaian: Wajib kaus kaki\nTransportasi akan disediakan antara Grand City Hall Medan dan Vihara Sinar Buddha",
       },
       mapUrl: "https://maps.app.goo.gl/D6tQ235KKhddTEnN6?g_st=ic",
     },

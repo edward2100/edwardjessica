@@ -320,7 +320,9 @@ export function SelfRegisterInvitePage({
                     </h3>
                     <p className="muted">{eventItem.venueName}</p>
                     {eventItem.note ? (
-                      <p className="muted">{text(eventItem.note, language)}</p>
+                      <p className="muted" style={{ whiteSpace: "pre-line" }}>
+                      {text(eventItem.note, language)}
+                    </p>
                     ) : null}
                   </div>
                   {/* F6: per-event action is the location link only */}

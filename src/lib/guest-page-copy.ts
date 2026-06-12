@@ -76,7 +76,7 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     heroKicker: "",
     heroTitle: "Travel & Accommodation",
     heroSubtitle:
-      "A calm little guide to help you arrive, settle in, and enjoy Medan with us.",
+      "A little guide to help you arrive, settle in, and enjoy Medan with us.",
     viewDetails: "View travel details",
     backToInvite: "Back to invite",
     travelTitle: "Travel",

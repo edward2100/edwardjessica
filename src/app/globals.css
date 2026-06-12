@@ -762,8 +762,13 @@ textarea {
 
 .story-photo {
   position: relative;
-  min-height: clamp(280px, 52vw, 620px);
-  margin: 0;
+  /* Height comes from the slot's frame aspect-ratio — a min-height here
+     would silently stretch landscape frames taller than their ratio. */
+  /* Same column width as the story dialogue (.story-message) so the
+     photo doesn't outgrow the section's text, whatever its frame ratio. */
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
   border-radius: 8px;
   overflow: hidden;
   background: var(--paper);

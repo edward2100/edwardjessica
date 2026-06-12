@@ -102,7 +102,7 @@ const tabs: { id: Tab; label: string; icon: ElementType }[] = [
 ];
 
 const eventLabels: Record<EventKey, string> = {
-  holy_matrimony: "Buddhist Holy Matrimony",
+  holy_matrimony: "Buddhist Wedding Ceremony",
   tea_lunch: "Lunch Buffet",
   dinner: "Dinner Reception",
 };
@@ -2882,9 +2882,9 @@ function EventsEditor({
                 </label>
                 <label className="form-field">
                   <span>Note (English)</span>
-                  <input
+                  <textarea
                     className="input"
-                    type="text"
+                    rows={2}
                     value={event.note?.en || ""}
                     placeholder="e.g. Dress code: semi formal."
                     onChange={(e) => updateEventNote(event.key, "en", e.target.value)}
@@ -2892,9 +2892,9 @@ function EventsEditor({
                 </label>
                 <label className="form-field">
                   <span>Note (Indonesian)</span>
-                  <input
+                  <textarea
                     className="input"
-                    type="text"
+                    rows={2}
                     value={event.note?.id || ""}
                     placeholder="cth. Aturan berpakaian: semi formal."
                     onChange={(e) => updateEventNote(event.key, "id", e.target.value)}

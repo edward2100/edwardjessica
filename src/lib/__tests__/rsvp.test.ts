@@ -356,6 +356,6 @@ describe("RSVP helpers", () => {
     expect(email.subject).toContain("Edward & Jessica");
     expect(email.inviteUrl).toContain("/invite/JOHNTAN");
     expect(email.html).toContain("John Tan");
-    expect(email.html).toContain("Buddhist Holy Matrimony");
+    expect(email.html).toContain("Buddhist Wedding Ceremony");
   });
 });
