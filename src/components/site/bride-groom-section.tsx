@@ -3,11 +3,18 @@ import { frameAspect } from "@/lib/image-crop";
 import type { BrideGroomFrame, ImageCropSlot, Language, WeddingContent } from "@/lib/types";
 import { SlotImage } from "@/components/site/slot-image";
 
-// Names and parent names are language-independent — hardcoded constants.
+// Names are language-independent; parents carry localized titles
+// (Mr./Mrs. in English, Bpk./Ibu in Indonesian).
 const BRIDE_NAME = "Jessica Limierta";
 const GROOM_NAME = "Edward Marco Moktar";
-const BRIDE_PARENTS = ["Mr. Hardwin Salim", "Mrs. Masria Ang"] as const;
-const GROOM_PARENTS = ["Brilian Moktar", "Janice Jong"] as const;
+const BRIDE_PARENTS: Record<Language, readonly [string, string]> = {
+  en: ["Mr. Hardwin Salim", "Mrs. Masria Ang"],
+  id: ["Bpk. Hardwin Salim", "Ibu Masria Ang"],
+};
+const GROOM_PARENTS: Record<Language, readonly [string, string]> = {
+  en: ["Mr. Brilian Moktar", "Mrs. Janice Jong"],
+  id: ["Bpk. Brilian Moktar", "Ibu Janice Jong"],
+};
 
 /** Shape classes shared by every frame layer (outer wrapper, mat, photo frame).
  *  The side modifier mirrors the petal shape between the two cards. */
@@ -96,7 +103,7 @@ export function BrideGroomSection({
             frameSide="bride"
             name={BRIDE_NAME}
             relation={c.daughterOf}
-            parents={BRIDE_PARENTS}
+            parents={BRIDE_PARENTS[language]}
           />
           <p className="bride-groom-ampersand serif">&amp;</p>
           <PortraitCard
@@ -105,7 +112,7 @@ export function BrideGroomSection({
             frameSide="groom"
             name={GROOM_NAME}
             relation={c.sonOf}
-            parents={GROOM_PARENTS}
+            parents={GROOM_PARENTS[language]}
           />
         </div>
       </div>

@@ -15,6 +15,8 @@ import { usePathname } from "next/navigation";
 
 const MUSIC_ENABLED_KEY = "edward-jessica-music-enabled";
 const MUSIC_TIME_KEY = "edward-jessica-music-time";
+// Background music sits under the page, not on top of it.
+const MUSIC_VOLUME = 0.7;
 
 type BackgroundMusicContextValue = {
   hasMusic: boolean;
@@ -51,6 +53,24 @@ function setStoredValue(key: string, value: string) {
   }
 }
 
+// Playback position is per-visit (sessionStorage): page-to-page navigation
+// keeps the song going, but a fresh visit starts from the beginning.
+function getSessionValue(key: string) {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function setSessionValue(key: string, value: string) {
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // Playback should still work in browsers that block storage.
+  }
+}
+
 export function GuestMusicProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -73,6 +93,8 @@ export function GuestMusicProvider({ children }: { children: ReactNode }) {
     if (audio.networkState === HTMLMediaElement.NETWORK_EMPTY) {
       audio.load();
     }
+    // Capped volume — best effort (iOS ignores programmatic volume).
+    audio.volume = MUSIC_VOLUME;
     void audio
       .play()
       .then(() => {
@@ -120,8 +142,9 @@ export function GuestMusicProvider({ children }: { children: ReactNode }) {
           data-background-music
           loop
           onLoadedMetadata={(event) => {
-            const storedTime = Number(getStoredValue(MUSIC_TIME_KEY));
+            const storedTime = Number(getSessionValue(MUSIC_TIME_KEY));
             const audio = event.currentTarget;
+            audio.volume = MUSIC_VOLUME;
             // E2-4: if the stored position is within 5 s of the end (or beyond),
             // restart from 0 so the track doesn't freeze near completion.
             const tooNearEnd =
@@ -143,7 +166,7 @@ export function GuestMusicProvider({ children }: { children: ReactNode }) {
             const currentSecond = Math.floor(event.currentTarget.currentTime);
             if (currentSecond - lastStoredSecondRef.current < 5) return;
             lastStoredSecondRef.current = currentSecond;
-            setStoredValue(MUSIC_TIME_KEY, String(currentSecond));
+            setSessionValue(MUSIC_TIME_KEY, String(currentSecond));
           }}
           /* Don't fetch any audio on page load — music only starts after a
              user gesture. play() calls audio.load() on demand, then the browser
