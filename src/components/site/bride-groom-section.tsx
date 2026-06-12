@@ -8,11 +8,11 @@ import { SlotImage } from "@/components/site/slot-image";
 const BRIDE_NAME = "Jessica Limierta";
 const GROOM_NAME = "Edward Marco Moktar";
 const BRIDE_PARENTS: Record<Language, readonly [string, string]> = {
-  en: ["Mr. Hardwin Salim", "Mrs. Masria Ang"],
+  en: ["Mr. Hardwin Salim", "Mdm. Masria Ang"],
   id: ["Bpk. Hardwin Salim", "Ibu Masria Ang"],
 };
 const GROOM_PARENTS: Record<Language, readonly [string, string]> = {
-  en: ["Mr. Brilian Moktar", "Mrs. Janice Jong"],
+  en: ["Mr. Brilian Moktar", "Mdm. Janice Jong"],
   id: ["Bpk. Brilian Moktar", "Ibu Janice Jong"],
 };
 
