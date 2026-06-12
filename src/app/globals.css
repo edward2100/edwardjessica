@@ -76,10 +76,12 @@ textarea {
 
 .hero {
   position: relative;
-  /* dvh tracks the live viewport so the hero never leaves a gap below it after
-     the mobile address bar collapses (svh was too short post-navigation). */
+  /* lvh = the LARGEST mobile viewport (address bar collapsed). The photo
+     always extends past the fold, so the browser-bar dance can only ever
+     reveal more photo below the title — never a white strip. dvh tracked
+     the live viewport exactly, which flashed background mid-transition. */
   min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100lvh;
   isolation: isolate;
   overflow: hidden;
   background: #2f2a24;
@@ -182,8 +184,11 @@ textarea {
 
 .hero-content {
   display: grid;
+  /* svh = the SMALLEST viewport state: the bottom-anchored title is always
+     on screen at load, while the .hero photo (100lvh) keeps extending
+     beneath it to absorb the address-bar transition. */
   min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100svh;
   align-items: end;
   max-width: 1180px;
   margin: 0 auto;

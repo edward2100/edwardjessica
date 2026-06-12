@@ -107,6 +107,22 @@ const eventLabels: Record<EventKey, string> = {
   dinner: "Dinner Reception",
 };
 
+// The events a guest actually selected — NOT the events they were invited to
+// (eligibleEvents), which is what these cells used to show for everyone.
+// Missing attendance keys default to true, matching the RSVP form's initial
+// state for eligible events.
+function attendanceEventLabels(invitation: InvitationGroup): string {
+  if (invitation.rsvp.status === "declined") return "—";
+  const keys =
+    invitation.rsvp.status === "attending"
+      ? invitation.eligibleEvents.filter(
+          (key) => invitation.rsvp.eventAttendance?.[key] !== false,
+        )
+      : invitation.eligibleEvents;
+  if (!keys.length) return "—";
+  return keys.map((key) => eventLabels[key]).join(", ");
+}
+
 const imageSlotLabels: Record<ImageSlot, string> = {
   hero: "Hero",
   invitation: "Invitation Intro",
@@ -430,7 +446,7 @@ function DashboardView({ snapshot }: { snapshot: AdminSnapshot }) {
                   <td>
                     <StatusPill status={invitation.rsvp.status} />
                   </td>
-                  <td>{invitation.eligibleEvents.join(", ")}</td>
+                  <td>{attendanceEventLabels(invitation)}</td>
                   <td>{formatDateTime(invitation.rsvp.updatedAt)}</td>
                 </tr>
               ))}
@@ -1144,7 +1160,7 @@ function InvitationTable({
                   </p>
                 ) : null}
               </td>
-              <td>{invitation.eligibleEvents.join(", ")}</td>
+              <td>{attendanceEventLabels(invitation)}</td>
               <td>{invitation.code}</td>
               <td>
                 <WhatsAppMessageActions

@@ -5,7 +5,9 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { copy } from "@/lib/i18n";
 import type { Language } from "@/lib/types";
 
-const RESEND_COOLDOWN_SECONDS = 30;
+// Matches Supabase Auth's "minimum interval per user" (60s) — a shorter UI
+// cooldown would let guests retry into a window the server silently rejects.
+const RESEND_COOLDOWN_SECONDS = 60;
 
 export function EmailOtpGate({
   autoVerifySession = true,
