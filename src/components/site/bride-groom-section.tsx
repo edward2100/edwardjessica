@@ -17,8 +17,9 @@ const GROOM_PARENTS: Record<Language, readonly [string, string]> = {
 };
 
 /** Shape classes shared by every frame layer (outer wrapper, mat, photo frame).
- *  The side modifier mirrors the petal shape between the two cards. */
-function frameClass(frame: BrideGroomFrame, side: "bride" | "groom") {
+ *  The side modifier mirrors the petal shape between the two cards — it
+ *  follows the card's position, not the person. */
+function frameClass(frame: BrideGroomFrame, side: "left" | "right") {
   return `bg-frame-shape bg-frame-${frame} bg-frame-${side}`;
 }
 
@@ -32,7 +33,7 @@ function PortraitCard({
 }: {
   content: WeddingContent;
   slot: ImageCropSlot;
-  frameSide: "bride" | "groom";
+  frameSide: "left" | "right";
   name: string;
   relation: string;
   parents: readonly [string, string];
@@ -99,20 +100,20 @@ export function BrideGroomSection({
         <div className="bride-groom-grid">
           <PortraitCard
             content={content}
-            slot="bridePortrait"
-            frameSide="bride"
-            name={BRIDE_NAME}
-            relation={c.daughterOf}
-            parents={BRIDE_PARENTS[language]}
+            slot="groomPortrait"
+            frameSide="left"
+            name={GROOM_NAME}
+            relation={c.sonOf}
+            parents={GROOM_PARENTS[language]}
           />
           <p className="bride-groom-ampersand serif">&amp;</p>
           <PortraitCard
             content={content}
-            slot="groomPortrait"
-            frameSide="groom"
-            name={GROOM_NAME}
-            relation={c.sonOf}
-            parents={GROOM_PARENTS[language]}
+            slot="bridePortrait"
+            frameSide="right"
+            name={BRIDE_NAME}
+            relation={c.daughterOf}
+            parents={BRIDE_PARENTS[language]}
           />
         </div>
       </div>

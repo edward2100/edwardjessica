@@ -15,7 +15,9 @@ export function InteractiveGallery({
 }) {
   const [active, setActive] = useState(0);
   const [failed, setFailed] = useState<Record<string, boolean>>({});
-  const shown = assets.filter((asset) => !failed[asset.id]);
+  // Three panels on desktop; CSS hides the third on mobile so the
+  // remaining two get more width.
+  const shown = assets.filter((asset) => !failed[asset.id]).slice(0, 3);
   if (!shown.length) return null;
   const activeIndex = Math.min(active, shown.length - 1);
 

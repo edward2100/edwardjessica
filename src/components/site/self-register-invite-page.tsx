@@ -368,12 +368,6 @@ export function SelfRegisterInvitePage({
       {content.gallery.length ? (
         <section className="section">
           <div className="page-shell">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">{c.gallery}</p>
-                <h2 className="title serif">{c.galleryTitle}</h2>
-              </div>
-            </div>
             <InteractiveGallery assets={content.gallery} />
           </div>
         </section>

@@ -715,6 +715,13 @@ textarea {
   gap: 14px;
 }
 
+/* Mobile: two panels only — hiding the third lets the pair spread wider. */
+@media (max-width: 860px) {
+  .gallery-expand .gallery-item:nth-child(3) {
+    display: none;
+  }
+}
+
 .gallery-expand .gallery-item {
   flex: 1 1 0;
   min-height: clamp(280px, 46vw, 440px);
@@ -1830,16 +1837,16 @@ textarea {
   border: 1px solid var(--champagne);
   padding: 10px;
 }
-.bg-frame-petal.bg-frame-bride.bg-frame-outer {
+.bg-frame-petal.bg-frame-left.bg-frame-outer {
   border-radius: 999px 16px 999px 16px;
 }
-.bg-frame-petal.bg-frame-bride.slot-image-frame {
+.bg-frame-petal.bg-frame-left.slot-image-frame {
   border-radius: 999px 10px 999px 10px;
 }
-.bg-frame-petal.bg-frame-groom.bg-frame-outer {
+.bg-frame-petal.bg-frame-right.bg-frame-outer {
   border-radius: 16px 999px 16px 999px;
 }
-.bg-frame-petal.bg-frame-groom.slot-image-frame {
+.bg-frame-petal.bg-frame-right.slot-image-frame {
   border-radius: 10px 999px 10px 999px;
 }
 
