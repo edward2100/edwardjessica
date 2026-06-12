@@ -291,7 +291,12 @@ export function SelfRegisterInvitePage({
             <p className="eyebrow">{c.details}</p>
             <h2 className="title serif">{text(content.introText, language)}</h2>
             <div style={{ marginTop: "clamp(42px, 7vw, 76px)" }}>
-              <SlotImage content={content} slot="invitation" alt="" />
+              <SlotImage
+                content={content}
+                slot="invitation"
+                alt=""
+                className="invitation-section-photo"
+              />
             </div>
           </div>
         </div>

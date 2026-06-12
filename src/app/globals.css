@@ -764,15 +764,14 @@ textarea {
   position: relative;
   /* Height comes from the slot's frame aspect-ratio — a min-height here
      would silently stretch landscape frames taller than their ratio. */
-  /* Same column width as the story dialogue (.story-message) so the
-     photo doesn't outgrow the section's text, whatever its frame ratio. */
   width: 100%;
-  max-width: 680px;
-  margin: 0 auto;
+  margin: 0;
   border-radius: 8px;
   overflow: hidden;
   background: var(--paper);
-  box-shadow: var(--shadow);
+  /* Tighter shadow than var(--shadow): the 70px blur visually spilled
+     past the column edges on wide landscape frames. */
+  box-shadow: 0 14px 34px rgba(50, 39, 27, 0.12);
 }
 
 .story-photo img {
