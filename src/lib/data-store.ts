@@ -494,15 +494,13 @@ function missingTravelOverridesColumn(
   return /travel_overrides/i.test(msg);
 }
 
-function normalizeAdminGuest(
-  guest: AdminGuestInput,
-  index: number,
-): AdminGuestInput {
-  const name = cleanOptionalText(guest.name);
-  if (!name) throw new Error(`Guest ${index + 1} needs a name.`);
+function normalizeAdminGuest(guest: AdminGuestInput): AdminGuestInput {
+  // Names are optional at the admin level: an admin can create a party with
+  // just a group label + max size and let guests enter their own names on
+  // RSVP. Empty-name rows are dropped by the caller.
   return {
     id: guest.id,
-    name,
+    name: cleanOptionalText(guest.name) || "",
     mealPreference: mealPreferenceOrUnset(guest.mealPreference),
   };
 }
@@ -529,12 +527,15 @@ function normalizeAdminInvitationInput(
   if (!eligibleEvents.length)
     throw new Error("Select at least one eligible event.");
 
-  const guests = input.guests.map(normalizeAdminGuest);
-  if (!guests.length) throw new Error("Add at least one guest.");
+  // Drop blank rows: a party may have zero pre-named guests (guests enter
+  // their own names on RSVP). The group is identified by its groupName.
+  const guests = input.guests
+    .map(normalizeAdminGuest)
+    .filter((guest) => guest.name);
   const rawMaxGuests = Number(input.maxGuests);
   const maxGuests = Math.min(
     10,
-    Math.max(guests.length, Number.isFinite(rawMaxGuests) ? rawMaxGuests : guests.length),
+    Math.max(1, guests.length, Number.isFinite(rawMaxGuests) ? rawMaxGuests : 1),
   );
 
   const flow = normalizeInvitationFlow(input.flow);
