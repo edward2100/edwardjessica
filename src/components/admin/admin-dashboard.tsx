@@ -2,7 +2,9 @@
 
 import {
   BarChart3,
+  Check,
   CheckCircle2,
+  Copy,
   Download,
   Edit3,
   FileText,
@@ -1239,7 +1241,10 @@ function InvitationTable({
                 ) : null}
               </td>
               <td>{attendanceEventLabels(invitation)}</td>
-              <td>{invitation.code}</td>
+              <td>
+                <span style={{ display: "block" }}>{invitation.code}</span>
+                <CopyInviteLinkButton code={invitation.code} />
+              </td>
               <td>
                 <WhatsAppMessageActions
                   content={content}
@@ -1265,6 +1270,37 @@ function InvitationTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+// Copies the guest's personal invite link (/invite/CODE) to the clipboard so
+// the admin can paste it straight into a chat. Falls back to a prompt if the
+// clipboard API is unavailable (e.g. non-secure context).
+function CopyInviteLinkButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyLink() {
+    const url = `${window.location.origin}/invite/${encodeURIComponent(code)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt("Copy this invite link", url);
+    }
+  }
+
+  return (
+    <button
+      className="button button-muted"
+      type="button"
+      onClick={copyLink}
+      style={{ marginTop: 6, padding: "3px 10px", fontSize: "0.8em" }}
+      aria-label={`Copy invite link for code ${code}`}
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+      {copied ? "Copied" : "Copy link"}
+    </button>
   );
 }
 
