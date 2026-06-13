@@ -840,24 +840,10 @@ function GuestGroupEditor({
           <p className="eyebrow">Overseas travel overrides</p>
           <p className="muted" style={{ marginTop: 4, marginBottom: 8 }}>
             Per-link overrides for this custom overseas invitation. Leave as-is
-            for the standard overseas experience.
+            for the standard overseas experience. (Guests still enter their own
+            names &mdash; set &ldquo;Max guests&rdquo; above without pre-filling
+            the extra names.)
           </p>
-          <label className="choice-row">
-            <span>
-              Require each guest&rsquo;s name
-              <br />
-              <span className="muted" style={{ fontSize: "0.82em" }}>
-                Off &rarr; guest just picks a headcount (up to max), no names.
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={draft.travelOverrides?.requireGuestNames !== false}
-              onChange={(event) =>
-                setTravelOverride("requireGuestNames", event.target.checked)
-              }
-            />
-          </label>
           <label className="choice-row">
             <span>Offer complimentary airport transport</span>
             <input

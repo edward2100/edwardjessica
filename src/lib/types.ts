@@ -184,8 +184,6 @@ export interface MediaAsset {
  * overseas flow (the travel page + travel-aware RSVP form read them).
  */
 export interface InvitationTravelOverrides {
-  /** false => the RSVP form collects a headcount only, no per-guest names. */
-  requireGuestNames?: boolean;
   /** Show/hide the complimentary airport-transport offer on the travel page. */
   transportProvided?: boolean;
   /** Show/hide the provided-accommodation offer on the travel page. */

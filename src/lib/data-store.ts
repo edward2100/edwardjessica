@@ -2534,8 +2534,6 @@ function normalizeTravelOverrides(
   if (!raw || typeof raw !== "object") return undefined;
   const o = raw as Record<string, unknown>;
   const result: InvitationTravelOverrides = {};
-  if (typeof o.requireGuestNames === "boolean")
-    result.requireGuestNames = o.requireGuestNames;
   if (typeof o.transportProvided === "boolean")
     result.transportProvided = o.transportProvided;
   if (typeof o.accommodationProvided === "boolean")

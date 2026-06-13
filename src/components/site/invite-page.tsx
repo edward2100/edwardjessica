@@ -523,16 +523,6 @@ function RsvpForm({
   const [message, setMessage] = useState(invitation.rsvp.message || "");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
-  // Custom overseas links may waive per-guest names: the guest just picks a
-  // headcount and we auto-name the extra seats. Default (and all other flows)
-  // keeps the name-based rows.
-  const requireNames = invitation.travelOverrides?.requireGuestNames !== false;
-  const [headcount, setHeadcount] = useState(() =>
-    Math.min(
-      invitation.maxGuests,
-      Math.max(1, invitation.guests.filter((g) => g.name.trim()).length || 1),
-    ),
-  );
   const closed = useMemo(
     () => isRsvpClosed(content.rsvpDeadline),
     [content.rsvpDeadline],
@@ -560,25 +550,13 @@ function RsvpForm({
           additionalGuests:
             status === "declined"
               ? []
-              : requireNames
-                ? additionalGuests
-                    .map((guest) => ({
-                      ...(guest.id ? { id: guest.id } : {}),
-                      name: guest.name.trim(),
-                      mealPreference: guest.mealPreference,
-                    }))
-                    .filter((guest) => guest.name)
-                : // Headcount mode: (headcount - 1) auto-named extra seats,
-                  // reusing existing ids/names where present.
-                  additionalGuests
-                    .slice(0, Math.max(0, headcount - 1))
-                    .map((guest, index) => ({
-                      ...(guest.id ? { id: guest.id } : {}),
-                      name:
-                        guest.name.trim() ||
-                        `${language === "id" ? "Tamu" : "Guest"} ${index + 2}`,
-                      mealPreference: guest.mealPreference,
-                    })),
+              : additionalGuests
+                  .map((guest) => ({
+                    ...(guest.id ? { id: guest.id } : {}),
+                    name: guest.name.trim(),
+                    mealPreference: guest.mealPreference,
+                  }))
+                  .filter((guest) => guest.name),
           message,
         }),
       });
@@ -686,66 +664,7 @@ function RsvpForm({
                 </select>
               </div>
             ))}
-            {!requireNames ? (
-              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                <label className="form-field">
-                  <span>{c.guestCount}</span>
-                  <select
-                    className="select"
-                    value={headcount}
-                    disabled={closed}
-                    onChange={(event) =>
-                      setHeadcount(Number(event.target.value) || 1)
-                    }
-                  >
-                    {Array.from(
-                      { length: invitation.maxGuests },
-                      (_, i) => i + 1,
-                    ).map((n) => (
-                      <option value={n} key={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {Array.from({ length: Math.max(0, headcount - 1) }, (_, index) => (
-                  <div className="guest-meal-row" key={`headcount-${index}`}>
-                    <span className="muted">
-                      {`${language === "id" ? "Tamu" : "Guest"} ${index + 2}`}
-                    </span>
-                    <select
-                      className="select"
-                      value={additionalGuests[index]?.mealPreference ?? "non_vegetarian"}
-                      disabled={closed}
-                      onChange={(event) =>
-                        setAdditionalGuests((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? {
-                                  ...item,
-                                  mealPreference: event.target
-                                    .value as MealPreference,
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                      style={{ maxWidth: 210 }}
-                    >
-                      {mealPreferences.map((preference) => (
-                        <option value={preference} key={preference}>
-                          {preference === "vegetarian"
-                            ? c.vegetarian
-                            : preference === "non_vegetarian"
-                              ? c.nonVegetarian
-                              : "-"}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            ) : additionalGuests.length ? (
+            {additionalGuests.length ? (
               <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                 {additionalGuests.map((guest, index) => (
                   <div className="guest-meal-row" key={`additional-${index}`}>
