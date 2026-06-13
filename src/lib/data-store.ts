@@ -17,6 +17,7 @@ import type {
   ImageCropSettings,
   ImageCropSlot,
   InvitationGroup,
+  InvitationTravelOverrides,
   MediaAsset,
   OpeningAnimation,
   PublicInviteFlow,
@@ -482,6 +483,17 @@ function missingFlowColumn(error: { code?: string; message?: string } | null) {
   return /flow|schema cache/i.test(error.message || "");
 }
 
+// Detect when the travel_overrides column has not been migrated yet so admin
+// saves still succeed (overrides silently ignored until the SQL is run).
+function missingTravelOverridesColumn(
+  error: { code?: string; message?: string } | null,
+) {
+  if (!error) return false;
+  const msg = error.message || "";
+  if (error.code === "42703") return /travel_overrides/.test(msg);
+  return /travel_overrides/i.test(msg);
+}
+
 function normalizeAdminGuest(
   guest: AdminGuestInput,
   index: number,
@@ -525,6 +537,14 @@ function normalizeAdminInvitationInput(
     Math.max(guests.length, Number.isFinite(rawMaxGuests) ? rawMaxGuests : guests.length),
   );
 
+  const flow = normalizeInvitationFlow(input.flow);
+  // Travel overrides only apply to the overseas flow; drop them otherwise so a
+  // flow change can't leave stale overrides behind.
+  const travelOverrides =
+    flow === "overseas"
+      ? normalizeTravelOverrides(input.travelOverrides)
+      : undefined;
+
   return {
     code: input.code ? input.code.trim().toUpperCase() : undefined,
     groupName,
@@ -536,10 +556,11 @@ function normalizeAdminInvitationInput(
       input.side === "groom" || input.side === "bride" || input.side === "joint"
         ? input.side
         : "joint",
-    flow: normalizeInvitationFlow(input.flow),
+    flow,
     privateNotes: normalizePrivateNotes(input.privateNotes),
     eligibleEvents,
     guests,
+    travelOverrides,
   };
 }
 
@@ -1884,19 +1905,34 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
           normalized.flow,
         ),
         eligible_events: normalized.eligibleEvents,
+        travel_overrides: normalized.travelOverrides ?? null,
         updated_at: now,
       };
       let { error } = await supabase
         .from("invitation_groups")
         .update({ ...groupUpdate, flow: normalized.flow })
         .eq("id", existing.id);
+      if (error && missingTravelOverridesColumn(error)) {
+        // travel_overrides migration not applied yet — retry without it.
+        console.error(
+          "[upsertInvitationByAdmin] WARNING: travel_overrides column missing. " +
+            "Run the 20260613 migration. Saving without travel overrides.",
+        );
+        const { travel_overrides, ...rest } = groupUpdate;
+        const retry = await supabase
+          .from("invitation_groups")
+          .update({ ...rest, flow: normalized.flow })
+          .eq("id", existing.id);
+        error = retry.error;
+      }
       if (error && missingFlowColumn(error)) {
         // B8: log loudly when missing columns
         console.error(
           "[upsertInvitationByAdmin] WARNING: flow/max_guests columns appear missing from invitation_groups. " +
             "Schema migration is required. Retrying without these columns.",
         );
-        const { max_guests, ...legacyGroupUpdate } = groupUpdate;
+        const { max_guests, travel_overrides, ...legacyGroupUpdate } =
+          groupUpdate;
         const retry = await supabase
           .from("invitation_groups")
           .update(legacyGroupUpdate)
@@ -1919,19 +1955,36 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
           normalized.flow,
         ),
         eligible_events: normalized.eligibleEvents,
+        travel_overrides: normalized.travelOverrides ?? null,
       };
       let { data, error } = await supabase
         .from("invitation_groups")
         .insert({ ...groupInsert, flow: normalized.flow })
         .select("id,code")
         .single();
+      if (error && missingTravelOverridesColumn(error)) {
+        // travel_overrides migration not applied yet — retry without it.
+        console.error(
+          "[upsertInvitationByAdmin] WARNING: travel_overrides column missing. " +
+            "Run the 20260613 migration. Saving without travel overrides.",
+        );
+        const { travel_overrides, ...rest } = groupInsert;
+        const retry = await supabase
+          .from("invitation_groups")
+          .insert({ ...rest, flow: normalized.flow })
+          .select("id,code")
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
       if (error && missingFlowColumn(error)) {
         // B8: log loudly when missing columns
         console.error(
           "[upsertInvitationByAdmin] WARNING: flow/max_guests columns appear missing from invitation_groups. " +
             "Schema migration is required. Retrying without these columns.",
         );
-        const { max_guests, ...legacyGroupInsert } = groupInsert;
+        const { max_guests, travel_overrides, ...legacyGroupInsert } =
+          groupInsert;
         const retry = await supabase
           .from("invitation_groups")
           .insert(legacyGroupInsert)
@@ -2034,6 +2087,7 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
       eligibleEvents: normalized.eligibleEvents,
       rsvp: adjustRsvpForEligibleEvents(existing, normalized.eligibleEvents),
       guests: updatedGuests,
+      travelOverrides: normalized.travelOverrides,
     };
     store.invitations = store.invitations.map((item) =>
       item.id === existing.id ? updated : item,
@@ -2068,6 +2122,7 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
       name: guest.name,
       mealPreference: guest.mealPreference,
     })),
+    travelOverrides: normalized.travelOverrides,
   };
   store.invitations.unshift(invitation);
   return clone(invitation);
@@ -2463,7 +2518,33 @@ function mapInvitationRow(row: any): InvitationGroup {
       updatedBy: rsvp?.updated_by || undefined,
     },
     guests,
+    travelOverrides: normalizeTravelOverrides(row.travel_overrides),
   };
+}
+
+/**
+ * Validate the travel_overrides JSONB blob into a typed object. Returns
+ * undefined when nothing usable is present so callers fall back to defaults.
+ * The column may not exist yet on older schemas — row.travel_overrides is
+ * simply undefined then, which this handles.
+ */
+function normalizeTravelOverrides(
+  raw: unknown,
+): InvitationTravelOverrides | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const result: InvitationTravelOverrides = {};
+  if (typeof o.requireGuestNames === "boolean")
+    result.requireGuestNames = o.requireGuestNames;
+  if (typeof o.transportProvided === "boolean")
+    result.transportProvided = o.transportProvided;
+  if (typeof o.accommodationProvided === "boolean")
+    result.accommodationProvided = o.accommodationProvided;
+  if (typeof o.checkInDate === "string" && o.checkInDate)
+    result.checkInDate = o.checkInDate;
+  if (typeof o.checkOutDate === "string" && o.checkOutDate)
+    result.checkOutDate = o.checkOutDate;
+  return Object.keys(result).length ? result : undefined;
 }
 
 function mapTravelPlanRow(row: any): TravelPlan {

@@ -91,6 +91,8 @@ export default async function Page({
     openedAt: invitation.openedAt,
     rsvp: invitation.rsvp,
     guests: invitation.guests,
+    // No PII — booleans + dates that drive the travel-aware RSVP form.
+    travelOverrides: invitation.travelOverrides,
     // email, phone, and privateNotes intentionally omitted
   };
 

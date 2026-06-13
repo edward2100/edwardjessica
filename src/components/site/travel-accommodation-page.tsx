@@ -31,6 +31,20 @@ function inviteSessionKey(flow: PublicInviteFlow) {
   return `edward-jessica-${flow}-invite-code`;
 }
 
+/** Format a YYYY-MM-DD date (no time) to a readable form, e.g. "11 Dec 2026". */
+function formatDateOnly(dateStr: string, language: Language): string {
+  try {
+    // Parse as a plain date; append T00:00 so it isn't shifted by timezone.
+    return new Intl.DateTimeFormat(language === "id" ? "id-ID" : "en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(new Date(`${dateStr}T00:00:00`));
+  } catch {
+    return dateStr;
+  }
+}
+
 /** Format an ISO datetime string in Asia/Jakarta timezone to a readable form. */
 function formatJakartaDate(iso: string): string {
   try {
@@ -100,6 +114,26 @@ export function TravelAccommodationPage({
   const activeInvitationHref = invitationHref(invitation?.code, activeFlow);
   const activeTravelHref = travelAccommodationHref(invitation?.code, activeFlow);
   const activeDiscoverHref = discoverMedanHref(invitation?.code, activeFlow);
+  // Per-invitation complimentary-travel overrides (custom overseas links).
+  // Absent keys keep the default offer shown.
+  const travelOverrides = invitation?.travelOverrides;
+  const showTransport = travelOverrides?.transportProvided !== false;
+  const showAccommodation = travelOverrides?.accommodationProvided !== false;
+  const overrideCheckIn = travelOverrides?.checkInDate;
+  const overrideCheckOut = travelOverrides?.checkOutDate;
+  const hasOverrideDates = Boolean(overrideCheckIn && overrideCheckOut);
+  // Single-line transport reminder reused inside the form; null hides it.
+  const transportNote = !showTransport
+    ? null
+    : hasOverrideDates
+      ? `${c.transportBase} ${c.arrivalLabel}: ${formatDateOnly(
+          overrideCheckIn as string,
+          language,
+        )} · ${c.departureLabel}: ${formatDateOnly(
+          overrideCheckOut as string,
+          language,
+        )}`
+      : c.transport;
   const canSubmitTravel =
     isTravelFlow && invitation?.rsvp.status === "attending";
   // E2-5: show "not applicable" notice when code found but wrong flow;
@@ -224,7 +258,22 @@ export function TravelAccommodationPage({
                     className="travel-airport-photo"
                   />
                 ) : null}
-                <p className="muted">{c.transport}</p>
+                {showTransport ? (
+                  hasOverrideDates ? (
+                    <>
+                      <p className="muted">{c.transportBase}</p>
+                      <p className="muted">
+                        {c.arrivalLabel}:{" "}
+                        {formatDateOnly(overrideCheckIn as string, language)}
+                        {" · "}
+                        {c.departureLabel}:{" "}
+                        {formatDateOnly(overrideCheckOut as string, language)}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="muted">{c.transport}</p>
+                  )
+                ) : null}
               </div>
               <div>
                 <p>{c.fromAirport}</p>
@@ -248,27 +297,42 @@ export function TravelAccommodationPage({
             </div>
           </article>
 
-          <article className="travel-detail-section">
-            <h2 className="title serif">{c.accommodationTitle}</h2>
-            <div className="panel travel-copy-panel">
-              <p className="muted">{c.accommodation}</p>
-              {content.travelAccommodationImageUrl ? (
-                <SlotImage
-                  content={content}
-                  slot="travelAccommodation"
-                  alt=""
-                  className="travel-accommodation-photo"
-                />
-              ) : null}
-              <div>
-                <p>{c.roomsTitle}</p>
-                <ol className="travel-list travel-list-numbered">
-                  <li>{c.roomDeluxe}</li>
-                  <li>{c.roomApartment}</li>
-                </ol>
+          {showAccommodation ? (
+            <article className="travel-detail-section">
+              <h2 className="title serif">{c.accommodationTitle}</h2>
+              <div className="panel travel-copy-panel">
+                {hasOverrideDates ? (
+                  <>
+                    <p className="muted">{c.accommodationBase}</p>
+                    <p className="muted">
+                      {c.checkInLabel}:{" "}
+                      {formatDateOnly(overrideCheckIn as string, language)}
+                      {" · "}
+                      {c.checkOutLabel}:{" "}
+                      {formatDateOnly(overrideCheckOut as string, language)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="muted">{c.accommodation}</p>
+                )}
+                {content.travelAccommodationImageUrl ? (
+                  <SlotImage
+                    content={content}
+                    slot="travelAccommodation"
+                    alt=""
+                    className="travel-accommodation-photo"
+                  />
+                ) : null}
+                <div>
+                  <p>{c.roomsTitle}</p>
+                  <ol className="travel-list travel-list-numbered">
+                    <li>{c.roomDeluxe}</li>
+                    <li>{c.roomApartment}</li>
+                  </ol>
+                </div>
               </div>
-            </div>
-          </article>
+            </article>
+          ) : null}
 
           {content.travelFormImageUrl ? (
             <SlotImage
@@ -309,6 +373,7 @@ export function TravelAccommodationPage({
                   setSubmittedPlan(plan);
                   setEditingTravel(false);
                 }}
+                transportNote={transportNote}
               />
             )}
           </article>
@@ -400,6 +465,7 @@ function TravelPlansForm({
   rsvpHref,
   initialPlan,
   onSubmitSuccess,
+  transportNote,
 }: {
   canSubmitTravel: boolean;
   flow: PublicInviteFlow;
@@ -411,6 +477,8 @@ function TravelPlansForm({
   initialPlan?: TravelPlan | null;
   /** B1: callback invoked with the saved plan on successful submit. */
   onSubmitSuccess?: (plan: TravelPlan) => void;
+  /** Resolved complimentary-transport reminder; null when transport is off. */
+  transportNote?: string | null;
 }) {
   const c = travelPageCopy[language];
   const isFamilyFlow = flow === "family";
@@ -514,7 +582,7 @@ function TravelPlansForm({
       </div>
       <p className="muted travel-locked-copy">
         {canSubmitTravel ? (
-          c.transport
+          transportNote ?? null
         ) : isDeclined ? (
           c.declinedCopy
         ) : (

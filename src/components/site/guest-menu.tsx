@@ -50,18 +50,19 @@ export function GuestMenu({
     },
   ];
 
+  // Travel & Accommodation is only relevant to out-of-town guests.
   if (flow !== "generic") {
-    items.push(
-      {
-        href: travelHref || invitationHref,
-        label: labels.travel,
-      },
-      {
-        href: discoverHref || invitationHref,
-        label: labels.discover,
-      },
-    );
+    items.push({
+      href: travelHref || invitationHref,
+      label: labels.travel,
+    });
   }
+
+  // Discover Medan is offered to every flow, including generic.
+  items.push({
+    href: discoverHref || invitationHref,
+    label: labels.discover,
+  });
 
   return (
     <nav className="guest-menu" aria-label={labels.menu}>

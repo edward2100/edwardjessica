@@ -177,6 +177,25 @@ export interface MediaAsset {
   isPublished: boolean;
 }
 
+/**
+ * Per-invitation overrides for custom (admin-created) overseas links.
+ * Every key is optional; an absent key falls back to the flow's default
+ * behavior, so existing invitations are unaffected. Only meaningful for the
+ * overseas flow (the travel page + travel-aware RSVP form read them).
+ */
+export interface InvitationTravelOverrides {
+  /** false => the RSVP form collects a headcount only, no per-guest names. */
+  requireGuestNames?: boolean;
+  /** Show/hide the complimentary airport-transport offer on the travel page. */
+  transportProvided?: boolean;
+  /** Show/hide the provided-accommodation offer on the travel page. */
+  accommodationProvided?: boolean;
+  /** Provided-accommodation check-in date (YYYY-MM-DD), shown when provided. */
+  checkInDate?: string;
+  /** Provided-accommodation check-out date (YYYY-MM-DD), shown when provided. */
+  checkOutDate?: string;
+}
+
 export interface InvitationGroup {
   id: string;
   code: string;
@@ -193,6 +212,7 @@ export interface InvitationGroup {
   openedAt?: string;
   rsvp: Rsvp;
   guests: Guest[];
+  travelOverrides?: InvitationTravelOverrides;
 }
 
 export interface Guest {
@@ -288,6 +308,7 @@ export interface AdminInvitationUpsert {
   privateNotes?: Partial<LocalizedString>;
   eligibleEvents: EventKey[];
   guests: AdminGuestInput[];
+  travelOverrides?: InvitationTravelOverrides;
 }
 
 export interface RsvpHistoryItem {

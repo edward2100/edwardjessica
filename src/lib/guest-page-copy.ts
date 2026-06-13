@@ -11,6 +11,10 @@ type TravelPageCopy = {
   arrivalTitle: string;
   airport: string;
   transport: string;
+  /** Date-free transport sentence used when a custom invite sets exact dates. */
+  transportBase: string;
+  arrivalLabel: string;
+  departureLabel: string;
   fromAirport: string;
   railink: string;
   trainSchedule: string;
@@ -19,6 +23,10 @@ type TravelPageCopy = {
   taxi: string;
   accommodationTitle: string;
   accommodation: string;
+  /** Date-free accommodation sentence used when a custom invite sets dates. */
+  accommodationBase: string;
+  checkInLabel: string;
+  checkOutLabel: string;
   roomsTitle: string;
   roomDeluxe: string;
   roomApartment: string;
@@ -85,6 +93,10 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     airport: "The nearest airport is Kualanamu International Airport (KNO).",
     transport:
       "Complimentary transport from KNO to Grand City Hall Medan will be provided for guests arriving on 11 December, and for departure on 13 December.",
+    transportBase:
+      "Complimentary transport between KNO and Grand City Hall Medan will be provided.",
+    arrivalLabel: "Arrival",
+    departureLabel: "Departure",
     fromAirport: "From the airport, you may travel to the city centre via:",
     railink:
       "Kualanamu Airport Railink Services (ARS), which takes you directly to Medan station.",
@@ -96,6 +108,10 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     accommodationTitle: "Accommodation",
     accommodation:
       "Accommodation will be provided at Grand City Hall Medan on a shared-room basis from 11-13 December.",
+    accommodationBase:
+      "Accommodation will be provided at Grand City Hall Medan on a shared-room basis.",
+    checkInLabel: "Check-in",
+    checkOutLabel: "Check-out",
     roomsTitle: "Available room types:",
     roomDeluxe: "Standard deluxe room for 2 pax",
     roomApartment: "2-bedroom apartment for 3 pax, limited availability",
@@ -142,6 +158,10 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     airport: "Bandara terdekat adalah Kualanamu International Airport (KNO).",
     transport:
       "Transportasi gratis dari KNO ke Grand City Hall Medan akan disediakan untuk tamu yang tiba pada 11 Desember, dan untuk kepulangan pada 13 Desember.",
+    transportBase:
+      "Transportasi gratis antara KNO dan Grand City Hall Medan akan disediakan.",
+    arrivalLabel: "Kedatangan",
+    departureLabel: "Kepulangan",
     fromAirport: "Dari bandara, Anda dapat menuju pusat kota melalui:",
     railink:
       "Kualanamu Airport Railink Services (ARS), yang membawa Anda langsung ke stasiun Medan.",
@@ -153,6 +173,10 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     accommodationTitle: "Akomodasi",
     accommodation:
       "Akomodasi akan disediakan di Grand City Hall Medan dengan konsep kamar bersama pada 11-13 Desember.",
+    accommodationBase:
+      "Akomodasi akan disediakan di Grand City Hall Medan dengan konsep kamar bersama.",
+    checkInLabel: "Check-in",
+    checkOutLabel: "Check-out",
     roomsTitle: "Tipe kamar yang tersedia:",
     roomDeluxe: "Standard deluxe room untuk 2 orang",
     roomApartment: "Apartemen 2 kamar untuk 3 orang, ketersediaan terbatas",

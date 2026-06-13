@@ -459,6 +459,7 @@ export function SelfRegisterInvitePage({
                     emailStatus={emailStatus}
                     isTravelFlow={isTravelFlow}
                     travelHref={currentTravelHref}
+                    discoverHref={currentDiscoverHref}
                     onViewInvite={navigateToPersonalInvite}
                   />
                 </div>
@@ -898,6 +899,7 @@ function SelfRegisterSuccessCard({
   emailStatus,
   isTravelFlow,
   travelHref,
+  discoverHref,
   onViewInvite,
 }: {
   content: WeddingContent;
@@ -907,6 +909,7 @@ function SelfRegisterSuccessCard({
   emailStatus: "sent" | "failed" | "skipped" | null;
   isTravelFlow: boolean;
   travelHref: string;
+  discoverHref: string;
   onViewInvite: () => void;
 }) {
   const c = copy[language];
@@ -1025,6 +1028,11 @@ function SelfRegisterSuccessCard({
         {isTravelFlow && attending ? (
           <Link className="button button-brown" href={travelHref as Route}>
             {c.submitTravelPlans}
+          </Link>
+        ) : null}
+        {!isTravelFlow && attending ? (
+          <Link className="button button-brown" href={discoverHref as Route}>
+            {c.medanGuide}
           </Link>
         ) : null}
       </div>

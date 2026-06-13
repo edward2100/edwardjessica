@@ -53,6 +53,7 @@ import type {
   ImageFocalPoint,
   ImageFrameRatio,
   InvitationGroup,
+  InvitationTravelOverrides,
   MediaAsset,
   OpeningAnimation,
   PublicInviteFlow,
@@ -647,6 +648,16 @@ function GuestGroupEditor({
     }));
   }
 
+  function setTravelOverride<K extends keyof InvitationTravelOverrides>(
+    key: K,
+    value: InvitationTravelOverrides[K],
+  ) {
+    setDraft((current) => ({
+      ...current,
+      travelOverrides: { ...current.travelOverrides, [key]: value },
+    }));
+  }
+
   async function save() {
     setNotice("");
     setSaving(true);
@@ -823,6 +834,87 @@ function GuestGroupEditor({
           ))}
         </div>
       </div>
+
+      {draft.flow === "overseas" ? (
+        <div style={{ marginTop: 18 }}>
+          <p className="eyebrow">Overseas travel overrides</p>
+          <p className="muted" style={{ marginTop: 4, marginBottom: 8 }}>
+            Per-link overrides for this custom overseas invitation. Leave as-is
+            for the standard overseas experience.
+          </p>
+          <label className="choice-row">
+            <span>
+              Require each guest&rsquo;s name
+              <br />
+              <span className="muted" style={{ fontSize: "0.82em" }}>
+                Off &rarr; guest just picks a headcount (up to max), no names.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={draft.travelOverrides?.requireGuestNames !== false}
+              onChange={(event) =>
+                setTravelOverride("requireGuestNames", event.target.checked)
+              }
+            />
+          </label>
+          <label className="choice-row">
+            <span>Offer complimentary airport transport</span>
+            <input
+              type="checkbox"
+              checked={draft.travelOverrides?.transportProvided !== false}
+              onChange={(event) =>
+                setTravelOverride("transportProvided", event.target.checked)
+              }
+            />
+          </label>
+          <label className="choice-row">
+            <span>Offer complimentary accommodation</span>
+            <input
+              type="checkbox"
+              checked={draft.travelOverrides?.accommodationProvided !== false}
+              onChange={(event) =>
+                setTravelOverride(
+                  "accommodationProvided",
+                  event.target.checked,
+                )
+              }
+            />
+          </label>
+          {draft.travelOverrides?.accommodationProvided !== false ? (
+            <div className="grid-2" style={{ marginTop: 10 }}>
+              <label className="form-field">
+                <span>Check-in date</span>
+                <input
+                  className="input"
+                  type="date"
+                  value={draft.travelOverrides?.checkInDate || ""}
+                  onChange={(event) =>
+                    setTravelOverride(
+                      "checkInDate",
+                      event.target.value || undefined,
+                    )
+                  }
+                />
+              </label>
+              <label className="form-field">
+                <span>Check-out date</span>
+                <input
+                  className="input"
+                  type="date"
+                  value={draft.travelOverrides?.checkOutDate || ""}
+                  onChange={(event) =>
+                    setTravelOverride(
+                      "checkOutDate",
+                      event.target.value || undefined,
+                    )
+                  }
+                />
+              </label>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid-2" style={{ marginTop: 18 }}>
         <label className="form-field">
@@ -3318,6 +3410,7 @@ function invitationToDraft(invitation: InvitationGroup): AdminInvitationUpsert {
       name: guest.name,
       mealPreference: guest.mealPreference,
     })),
+    travelOverrides: invitation.travelOverrides,
   };
 }
 
