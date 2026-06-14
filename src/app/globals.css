@@ -924,9 +924,25 @@ textarea {
   min-width: 0;
 }
 
-.travel-form .input {
+.travel-form .input,
+.travel-form .textarea,
+.travel-form .select {
   min-width: 0;
   max-width: 100%;
+}
+
+.travel-form input[type="datetime-local"] {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.travel-form input[type="datetime-local"]::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: left;
 }
 
 .travel-detail-section .title {
