@@ -896,6 +896,7 @@ textarea {
 .travel-hero .hero-meta {
   max-width: min(680px, calc(100vw - 48px));
   margin-inline: 0;
+  text-align: left;
 }
 
 .travel-hero-actions {
