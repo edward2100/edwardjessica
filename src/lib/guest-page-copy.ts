@@ -172,9 +172,9 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     taxi: "Taksi atau Grab, tersedia langsung dari bandara.",
     accommodationTitle: "Akomodasi",
     accommodation:
-      "Akomodasi akan disediakan di Grand City Hall Medan dengan konsep kamar bersama pada 11-13 Desember.",
+      "Akomodasi akan disediakan di Grand City Hall Medan dengan sistem shared room.",
     accommodationBase:
-      "Akomodasi akan disediakan di Grand City Hall Medan dengan konsep kamar bersama.",
+      "Akomodasi akan disediakan di Grand City Hall Medan dengan sistem shared room.",
     checkInLabel: "Check-in",
     checkOutLabel: "Check-out",
     roomsTitle: "Tipe kamar yang tersedia:",
