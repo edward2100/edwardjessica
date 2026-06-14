@@ -8,7 +8,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { validateTravelPlanSubmission } from "@/lib/rsvp";
 import { sendTravelPlanConfirmationEmail } from "@/lib/rsvp-confirmation-email";
 
-// D3: Travel plans intentionally stay open after the 1 Sep RSVP deadline so
+// D3: Travel plans intentionally stay open after the 12 Oct RSVP deadline so
 // guests can still register travel and accommodation details closer to the
 // wedding date (12 Dec 2026). This is a product decision by Edward — do not
 // add an isRsvpClosed() guard here. Date-range validation is handled by

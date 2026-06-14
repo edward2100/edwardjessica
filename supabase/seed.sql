@@ -7,7 +7,7 @@ on conflict (email) do update set display_name = excluded.display_name;
 insert into site_settings (key, value)
 values
   ('event_timezone', '"Asia/Jakarta"'::jsonb),
-  ('rsvp_deadline', '"2026-09-01T16:59:59.000Z"'::jsonb)
+  ('rsvp_deadline', '"2026-10-12T16:59:59.000Z"'::jsonb)
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
 insert into content_versions (status, content, published_at)
@@ -19,7 +19,7 @@ values (
     "brideName": "Jessica",
     "weddingDate": "2026-12-12",
     "timezone": "Asia/Jakarta",
-    "rsvpDeadline": "2026-09-01T16:59:59.000Z",
+    "rsvpDeadline": "2026-10-12T16:59:59.000Z",
     "defaultLanguage": "en",
     "openingText": {
       "en": "Together with our families, we invite you to celebrate our wedding.",

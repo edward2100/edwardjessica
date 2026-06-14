@@ -3,7 +3,7 @@ import type { WeddingContent } from "@/lib/types";
 import { createDefaultDiscoverMedanContent } from "@/lib/discover-medan-content";
 
 export const EVENT_DATE = "2026-12-12";
-export const RSVP_DEADLINE = "2026-09-01T16:59:59.000Z";
+export const RSVP_DEADLINE = "2026-10-12T16:59:59.000Z";
 export const WEDDING_TIMEZONE = "Asia/Jakarta";
 
 export const weddingContent: WeddingContent = {

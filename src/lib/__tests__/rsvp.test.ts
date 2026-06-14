@@ -37,14 +37,14 @@ describe("RSVP helpers", () => {
   it("locks RSVP after the configured deadline", () => {
     expect(
       isRsvpClosed(
-        "2026-09-01T16:59:59.000Z",
-        new Date("2026-09-01T16:00:00.000Z"),
+        "2026-10-12T16:59:59.000Z",
+        new Date("2026-10-12T16:00:00.000Z"),
       ),
     ).toBe(false);
     expect(
       isRsvpClosed(
-        "2026-09-01T16:59:59.000Z",
-        new Date("2026-09-02T00:00:00.000Z"),
+        "2026-10-12T16:59:59.000Z",
+        new Date("2026-10-13T00:00:00.000Z"),
       ),
     ).toBe(true);
   });
