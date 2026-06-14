@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 import { getInvitationByVerifiedEmail } from "@/lib/data-store";
 import { getGuestAuthSession } from "@/lib/guest-auth";
-import type { PublicInviteFlow } from "@/lib/types";
+import type { InvitationGroup, PublicInviteFlow } from "@/lib/types";
 
 function normalizeFlow(value: string | null): PublicInviteFlow | undefined {
   if (value === "generic" || value === "overseas" || value === "family") {
     return value;
   }
   return undefined;
+}
+
+function publicInvitation(invitation: InvitationGroup | null) {
+  if (!invitation) return null;
+  const { email: _email, phone: _phone, privateNotes: _notes, ...safeInvitation } = invitation;
+  return {
+    ...safeInvitation,
+    emailClaimed: Boolean(invitation.email),
+  };
 }
 
 export async function GET(request: Request) {
@@ -24,7 +33,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       verified: true,
       email: session.email,
-      invitation,
+      invitation: publicInvitation(invitation),
     });
   } catch (error) {
     return NextResponse.json(

@@ -64,7 +64,10 @@ export async function POST(request: Request) {
     // E1-7: strip PII fields before returning the invitation to the client so a
     // re-render of EmailOtpGate cannot pre-fill the email input from API data.
     const { email: _email, phone: _phone, privateNotes: _notes, ...safeInvitation } = invitation;
-    return NextResponse.json({ invitation: safeInvitation, emailStatus: emailResult.status });
+    return NextResponse.json({
+      invitation: { ...safeInvitation, emailClaimed: Boolean(invitation.email) },
+      emailStatus: emailResult.status,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to submit RSVP." },

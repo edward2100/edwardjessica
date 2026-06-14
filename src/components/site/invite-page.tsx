@@ -448,6 +448,7 @@ export function InvitePage({
                     />
                   ) : (
                     <EmailOtpGate
+                      autoVerifySession={Boolean(currentInvitation.emailClaimed)}
                       code={currentInvitation.code}
                       defaultEmail={currentInvitation.email}
                       language={language}

@@ -23,7 +23,7 @@ export const copy = {
     tapUnfold: "Tap to unfold",
     details: "Our Invitation",
     brideGroomEyebrow: "Together with our families",
-    brideGroomTitle: "Bride & Groom",
+    brideGroomTitle: "Groom & Bride",
     daughterOf: "Daughter of",
     sonOf: "Son of",
     saveTheDate: "Save the Date",

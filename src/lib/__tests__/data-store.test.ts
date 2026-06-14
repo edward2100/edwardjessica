@@ -3,6 +3,7 @@ import {
   calculateStats,
   createSelfRegisteredInvitation,
   deleteInvitationByAdmin,
+  ensureInvitationEmailAllowed,
   getInvitationByCode,
   getInvitationByVerifiedEmail,
   submitRsvp,
@@ -127,6 +128,47 @@ describe("dashboard stats", () => {
 
     await deleteInvitationByAdmin(created.code);
     expect(await getInvitationByCode(created.code)).toBeNull();
+  });
+
+  it("lets an email-less custom invite be claimed by the first verified email", async () => {
+    const created = await upsertInvitationByAdmin({
+      groupName: "QA Claimable Overseas",
+      greeting: "Dear QA Claimable Overseas",
+      phone: "+628299999",
+      email: "",
+      maxGuests: 2,
+      side: "joint",
+      flow: "overseas",
+      eligibleEvents: ["dinner"],
+      guests: [],
+    });
+
+    expect(created.email).toBeUndefined();
+
+    const checked = await ensureInvitationEmailAllowed(
+      created.code,
+      "claimable@example.com",
+    );
+    expect(checked.email).toBeUndefined();
+
+    const claimed = await ensureInvitationEmailAllowed(
+      created.code,
+      "CLAIMABLE@example.com",
+      { claimIfEmpty: true },
+    );
+    expect(claimed.email).toBe("claimable@example.com");
+
+    const resolved = await getInvitationByVerifiedEmail(
+      "claimable@example.com",
+      "overseas",
+    );
+    expect(resolved?.code).toBe(created.code);
+
+    await expect(
+      ensureInvitationEmailAllowed(created.code, "someone-else@example.com"),
+    ).rejects.toThrow("Please verify the email assigned to this invitation.");
+
+    await deleteInvitationByAdmin(created.code);
   });
 
   it("allows private invites to add guests only up to the admin max", async () => {

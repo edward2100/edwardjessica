@@ -201,6 +201,11 @@ export interface InvitationGroup {
   groupName: string;
   phone?: string;
   email?: string;
+  /**
+   * Safe client-facing flag used to decide whether an existing browser OTP
+   * session may unlock this invite. The actual email remains server-only.
+   */
+  emailClaimed?: boolean;
   maxGuests: number;
   side: GuestSide;
   source?: InvitationSource;

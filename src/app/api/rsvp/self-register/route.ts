@@ -48,7 +48,10 @@ export async function POST(request: Request) {
       // E1-7: strip PII before returning.
       const { email: _email, phone: _phone, privateNotes: _notes, ...safeExisting } = existingInvitation;
       return NextResponse.json({
-        invitation: safeExisting,
+        invitation: {
+          ...safeExisting,
+          emailClaimed: Boolean(existingInvitation.email),
+        },
         existing: true,
         emailStatus: "skipped",
       });
@@ -77,7 +80,11 @@ export async function POST(request: Request) {
     // E1-7: strip PII fields before returning the invitation to the client so a
     // re-render of EmailOtpGate cannot pre-fill the email input from API data.
     const { email: _email, phone: _phone, privateNotes: _notes, ...safeInvitation } = invitation;
-    return NextResponse.json({ invitation: safeInvitation, existing: false, emailStatus: emailResult.status });
+    return NextResponse.json({
+      invitation: { ...safeInvitation, emailClaimed: Boolean(invitation.email) },
+      existing: false,
+      emailStatus: emailResult.status,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to register RSVP." },

@@ -83,6 +83,7 @@ export default async function Page({
     code: invitation.code,
     greeting: invitation.greeting,
     groupName: invitation.groupName,
+    emailClaimed: Boolean(invitation.email),
     maxGuests: invitation.maxGuests,
     side: invitation.side,
     source: invitation.source,

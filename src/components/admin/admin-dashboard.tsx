@@ -755,13 +755,16 @@ function GuestGroupEditor({
           />
         </label>
         <label className="form-field">
-          <span>Email</span>
+          <span>Email (optional)</span>
           <input
             className="input"
             type="email"
             value={draft.email || ""}
             onChange={(event) => setField("email", event.target.value)}
           />
+          <small className="muted">
+            Leave blank to let the first verified RSVP email claim this invite.
+          </small>
         </label>
         <label className="form-field">
           <span>Side</span>
