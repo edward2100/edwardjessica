@@ -37,6 +37,10 @@ type TravelPageCopy = {
   lockedCopy: string;
   declinedTitle: string;
   declinedCopy: string;
+  /** CL-4: shown instead of the "RSVP here" link once RSVP is closed. */
+  closedCopy: string;
+  /** CL-4: declined guests after the deadline (no "update your RSVP"). */
+  declinedClosedCopy: string;
   rsvpHere: string;
   invalidCode: string;
   arrivalField: string;
@@ -126,6 +130,10 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     declinedTitle: "No travel details needed",
     declinedCopy:
       "Your RSVP is currently marked as not attending, so no travel details are needed. If your plans change, please update your RSVP first.",
+    closedCopy:
+      "The RSVP deadline has passed, so travel details can only be submitted by guests who have confirmed their attendance. If you'd still like to join us, please contact us directly.",
+    declinedClosedCopy:
+      "Your RSVP is marked as not attending, so no travel details are needed. If your plans have changed, please contact us directly.",
     rsvpHere: "RSVP here",
     invalidCode:
       "We could not find this overseas invitation code. Please reopen this page from your RSVP confirmation or invite link.",
@@ -191,6 +199,11 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     declinedTitle: "Detail perjalanan tidak diperlukan",
     declinedCopy:
       "RSVP Anda saat ini tercatat tidak hadir, jadi detail perjalanan tidak diperlukan. Jika rencana Anda berubah, mohon perbarui RSVP terlebih dahulu.",
+    // CL-4: closed-state copy — ID NEEDS REVIEW by Edward
+    closedCopy:
+      "Batas waktu RSVP telah berakhir, sehingga detail perjalanan hanya dapat dikirim oleh tamu yang telah mengonfirmasi kehadiran. Jika Anda masih ingin hadir, silakan hubungi kami langsung.",
+    declinedClosedCopy:
+      "RSVP Anda tercatat tidak hadir, jadi detail perjalanan tidak diperlukan. Jika rencana Anda berubah, silakan hubungi kami langsung.",
     rsvpHere: "RSVP di sini",
     invalidCode:
       "Kami tidak dapat menemukan kode undangan overseas ini. Mohon buka halaman ini dari konfirmasi RSVP atau tautan undangan Anda.",

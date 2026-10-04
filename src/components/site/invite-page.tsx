@@ -8,7 +8,7 @@ import {
   Send,
   Utensils,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { InteractiveGallery } from "@/components/site/interactive-gallery";
 import Link from "next/link";
 import type { Route } from "next";
@@ -21,6 +21,7 @@ import { FloatingRsvpButton } from "@/components/site/floating-rsvp-button";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
 import { OpeningCover } from "@/components/site/opening-cover";
+import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
 import { BrideGroomSection } from "@/components/site/bride-groom-section";
 import { SaveDateSection } from "@/components/site/save-date-section";
 import { SlotImage } from "@/components/site/slot-image";
@@ -30,9 +31,16 @@ import {
   invitationHref,
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
-import { copy, text } from "@/lib/i18n";
+import { copy, guestCountHintText, rsvpCountdownText, text } from "@/lib/i18n";
 import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
-import { isRsvpClosed, mealPreferences, normalizeInviteCode } from "@/lib/rsvp";
+import {
+  getRsvpDaysLeft,
+  hasRsvpContact,
+  isRsvpClosed,
+  mealPreferences,
+  normalizeInviteCode,
+} from "@/lib/rsvp";
+import { useRsvpClosed } from "@/lib/use-rsvp-closed";
 import type {
   EventKey,
   InvitationGroup,
@@ -97,10 +105,42 @@ export function InvitePage({
     .filter(Boolean)
     .join(" · ");
 
-  const rsvpClosed = useMemo(
-    () => isRsvpClosed(content.rsvpDeadline),
-    [content.rsvpDeadline],
-  );
+  // CL-5: also flips to closed when the deadline passes while the page is open.
+  const deadlinePassed = useRsvpClosed(content.rsvpDeadline);
+  // CL-5: a 403 "closed" answer from the server (e.g. a device clock that is
+  // behind) also switches to closed.
+  const [closedByServer, setClosedByServer] = useState(false);
+  const rsvpClosed = deadlinePassed || closedByServer;
+  const rsvpStatus = currentInvitation.rsvp.status;
+  const hasContact = hasRsvpContact(content.rsvpContact);
+  // CL-1: attending summary on the closed card ("2 guests attending ·
+  // Events: …"), from the saved RSVP.
+  const closedAttendingSummary =
+    rsvpStatus === "attending"
+      ? [
+          currentInvitation.guests.length === 1
+            ? c.closedGuestAttendingOne
+            : currentInvitation.guests.length > 1
+              ? c.closedGuestsAttending.replace(
+                  "{count}",
+                  String(currentInvitation.guests.length),
+                )
+              : "",
+          eligibleEvents.some(
+            (eventItem) => currentInvitation.rsvp.eventAttendance[eventItem.key],
+          )
+            ? `${c.events}: ${eligibleEvents
+                .filter(
+                  (eventItem) =>
+                    currentInvitation.rsvp.eventAttendance[eventItem.key],
+                )
+                .map((eventItem) => text(eventItem.shortTitle, language))
+                .join(", ")}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
 
   // E1-2: persist language on toggle
   function handleLanguageChange(lang: Language) {
@@ -139,6 +179,18 @@ export function InvitePage({
     }, 40);
   }
 
+  // CL-5: the server said RSVP is closed — show the closed card in place of
+  // the form and bring it into view.
+  function handleRsvpClosedByServer() {
+    setClosedByServer(true);
+    setShowRsvpForm(false);
+    window.setTimeout(() => {
+      document
+        .getElementById("rsvp")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
+  }
+
   function handleRsvpSaved(saved: InvitationGroup) {
     setCurrentInvitation(saved);
     setRsvpJustSaved(true);
@@ -165,9 +217,11 @@ export function InvitePage({
       setHasOpenedInvitation(true);
       setShowRsvpForm(true);
       window.setTimeout(() => {
-        document
-          .getElementById("rsvp-form")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        // CL-9: when RSVP is closed there is no form; land on the section.
+        (
+          document.getElementById("rsvp-form") ??
+          document.getElementById("rsvp")
+        )?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 80);
     }
 
@@ -185,7 +239,8 @@ export function InvitePage({
         language={language}
         travelHref={currentTravelHref}
       />
-      {hasOpenedInvitation ? <FloatingRsvpButton /> : null}
+      {/* CL-6: no floating RSVP shortcut once RSVP is closed. */}
+      {hasOpenedInvitation && !rsvpClosed ? <FloatingRsvpButton /> : null}
       <RegisterBackgroundMusic src={content.musicUrl} />
 
       {useCover && !hasOpenedInvitation ? (
@@ -328,7 +383,9 @@ export function InvitePage({
       <section className="section" id="rsvp">
         <div className="page-shell">
           {rsvpClosed ? (
-            /* Closed state — replace form area entirely */
+            /* Closed state — replace form area entirely. CL-1: the guest's
+               own status; CL-2: attending guests keep their next step;
+               CL-3: how to reach the couple. */
             <div className="rsvp-callout">
               <div>
                 <p className="eyebrow">{c.rsvp}</p>
@@ -339,9 +396,53 @@ export function InvitePage({
                   {c.rsvpClosed}
                 </h2>
                 <p className="muted" style={{ marginTop: 14 }}>
-                  {c.rsvpClosedContact}
+                  {rsvpStatus === "attending"
+                    ? c.closedStatusAttending
+                    : rsvpStatus === "declined"
+                      ? c.closedStatusDeclined
+                      : c.closedStatusPending}
                 </p>
+                {closedAttendingSummary ? (
+                  <p className="muted" style={{ marginTop: 8, fontWeight: 700 }}>
+                    {closedAttendingSummary}
+                  </p>
+                ) : null}
+                {!hasContact ? (
+                  <p className="muted" style={{ marginTop: 14 }}>
+                    {c.rsvpClosedContact}
+                  </p>
+                ) : null}
               </div>
+              {/* CL-2: the next step sits above the reach-out sentence, so its
+                  colon points at the contact links, not at this button. */}
+              {rsvpStatus === "attending" ? (
+                <div className="rsvp-actions">
+                  {isTravelFlow ? (
+                    <Link className="button button-brown" href={currentTravelHref as Route}>
+                      {c.submitTravelPlans}
+                    </Link>
+                  ) : (
+                    <Link className="button button-brown" href={currentDiscoverHref as Route}>
+                      {c.medanGuide}
+                    </Link>
+                  )}
+                </div>
+              ) : null}
+              {hasContact ? (
+                <div>
+                  <p className="muted">
+                    {rsvpStatus === "pending"
+                      ? c.closedReachOutPending
+                      : c.closedReachOut}
+                  </p>
+                  <div className="rsvp-actions" style={{ marginTop: 14 }}>
+                    <RsvpContactLinks
+                      contact={content.rsvpContact}
+                      language={language}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <>
@@ -431,9 +532,9 @@ export function InvitePage({
                     <p className="eyebrow">{c.rsvp}</p>
                     <p className="muted" style={{ marginTop: 14 }}>
                       {currentInvitation.maxGuests > currentInvitation.guests.length
-                        ? c.guestCountHint.replace(
-                            "{count}",
-                            String(currentInvitation.maxGuests),
+                        ? guestCountHintText(
+                            language,
+                            currentInvitation.maxGuests,
                           )
                         : c.noPlusOne}
                     </p>
@@ -443,6 +544,7 @@ export function InvitePage({
                       content={content}
                       invitation={currentInvitation}
                       language={language}
+                      onClosed={handleRsvpClosedByServer}
                       onEmailStatus={setEmailStatus}
                       onSaved={handleRsvpSaved}
                     />
@@ -469,12 +571,15 @@ function RsvpForm({
   content,
   invitation,
   language,
+  onClosed,
   onEmailStatus,
   onSaved,
 }: {
   content: WeddingContent;
   invitation: InvitationGroup;
   language: Language;
+  /** CL-5: called when the server answers 403 (RSVP closed). */
+  onClosed: () => void;
   onEmailStatus: (status: "sent" | "failed" | "skipped") => void;
   onSaved: (invitation: InvitationGroup) => void;
 }) {
@@ -524,18 +629,27 @@ function RsvpForm({
   const [message, setMessage] = useState(invitation.rsvp.message || "");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
-  const closed = useMemo(
-    () => isRsvpClosed(content.rsvpDeadline),
-    [content.rsvpDeadline],
-  );
+  // CL-5: checked on every render, so a deadline that passes on the guest's
+  // own clock while the form is open is noticed on the next keystroke.
+  const closed = isRsvpClosed(content.rsvpDeadline);
   const events = content.events.filter((eventItem) =>
     invitation.eligibleEvents.includes(eventItem.key),
   );
 
+  // CL-5: closed by the guest's own clock — switch the section to the closed
+  // card, like a 403 from the server.
+  useEffect(() => {
+    if (closed) onClosed();
+  }, [closed, onClosed]);
+
   // E1-1: wrapped in try/catch to prevent UI freeze on network failure
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (closed) return;
+    // CL-5: closed by the guest's own clock — same switch as a 403.
+    if (closed) {
+      onClosed();
+      return;
+    }
     setLoading(true);
     setNotice("");
     try {
@@ -567,6 +681,13 @@ function RsvpForm({
         emailStatus?: "sent" | "failed" | "skipped";
       };
       setLoading(false);
+      // CL-5: 403 = RSVP closed. Localized closed message (never the
+      // generic "try again"), then the parent switches to the closed card.
+      if (response.status === 403) {
+        setNotice(c.deadlineClosed);
+        onClosed();
+        return;
+      }
       if (!response.ok || !json.invitation) {
         setNotice(
           language === "id"
@@ -808,14 +929,10 @@ function RsvpCountdownLine({
   deadlineIso: string;
   language: Language;
 }) {
-  const c = copy[language];
-  const now = new Date();
-  const deadline = new Date(deadlineIso);
-  const msLeft = deadline.getTime() - now.getTime();
-  if (msLeft <= 0) return null;
-  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-  const template = daysLeft <= 14 ? c.daysLeftUrgent : c.daysLeftRsvp;
-  const label = template.replace("{d}", String(daysLeft));
+  // CL-8: same closed rule as isRsvpClosed; singular "1 day left".
+  const daysLeft = getRsvpDaysLeft(deadlineIso);
+  if (daysLeft === null) return null;
+  const label = rsvpCountdownText(language, daysLeft);
   return (
     <p className="muted" style={{ marginTop: 10, fontWeight: 700 }}>
       {label}

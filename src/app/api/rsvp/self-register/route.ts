@@ -6,7 +6,13 @@ import {
 } from "@/lib/data-store";
 import { getGuestAuthSession } from "@/lib/guest-auth";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { isRsvpClosed, validateSelfRegistration, validateSelfRegistrationForInviteType } from "@/lib/rsvp";
+import {
+  findPublicInviteTypeByCode,
+  getEffectiveRsvpDeadline,
+  isRsvpClosed,
+  validateSelfRegistration,
+  validateSelfRegistrationForInviteType,
+} from "@/lib/rsvp";
 import { sendRsvpConfirmationEmail } from "@/lib/rsvp-confirmation-email";
 
 export async function POST(request: Request) {
@@ -26,7 +32,23 @@ export async function POST(request: Request) {
 
   try {
     const content = await getPublishedContent();
-    if (isRsvpClosed(content.rsvpDeadline)) {
+    // DL-6: read the body once and resolve the link from its accessCode BEFORE
+    // auth/validation, so a closed link always answers 403. The link's own
+    // deadline applies; an unknown/disabled code is checked against the main
+    // deadline and then fails validation exactly as before.
+    const body: unknown = await request.json();
+    const rawBody = (
+      body && typeof body === "object" ? body : {}
+    ) as Record<string, unknown>;
+    const requestedInviteType = findPublicInviteTypeByCode(
+      content,
+      typeof rawBody.accessCode === "string" ? rawBody.accessCode : "",
+    );
+    if (
+      isRsvpClosed(
+        getEffectiveRsvpDeadline(content, { inviteType: requestedInviteType }),
+      )
+    ) {
       return NextResponse.json({ error: "RSVP editing is closed." }, { status: 403 });
     }
 
@@ -38,7 +60,7 @@ export async function POST(request: Request) {
       );
     }
     const payload = validateSelfRegistration({
-      ...(await request.json()),
+      ...rawBody,
       email: guestAuth.email,
     });
     const inviteType = validateSelfRegistrationForInviteType(payload, content);
@@ -57,7 +79,10 @@ export async function POST(request: Request) {
       });
     }
 
-    const invitation = await createSelfRegisteredInvitation(payload, inviteType);
+    const invitation = await createSelfRegisteredInvitation(payload, inviteType, {
+      // DL-12: every published link code is reserved for name codes.
+      reservedCodes: content.publicInviteTypes.map((item) => item.code),
+    });
 
     // D1: email runs AFTER the successful save and can never throw past itself.
     // emailStatus is included in the response so the client can notify the guest.

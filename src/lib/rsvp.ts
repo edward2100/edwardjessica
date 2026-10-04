@@ -4,6 +4,8 @@ import type {
   EventKey,
   InvitationGroup,
   MealPreference,
+  PublicInviteType,
+  RsvpContact,
   RsvpSubmission,
   SelfRegistrationSubmission,
   TravelAccommodationOption,
@@ -11,6 +13,7 @@ import type {
   WeddingContent,
   WeddingEvent,
 } from "@/lib/types";
+import { RSVP_DEADLINE, WEDDING_TIMEZONE } from "@/lib/wedding-content";
 
 export const eventKeys: EventKey[] = ["holy_matrimony", "tea_lunch", "dinner"];
 export const mealPreferences: MealPreference[] = [
@@ -67,6 +70,169 @@ export function getDefaultPublicInviteType(content: WeddingContent) {
 
 export function isRsvpClosed(deadlineIso: string, now = new Date()) {
   return now.getTime() > new Date(deadlineIso).getTime();
+}
+
+// DL-2: canonical ISO instant for a stored deadline, or undefined for "",
+// null and unparseable values, so a blank override can never be compared as
+// NaN (fail-open) or crash Intl date formatting.
+export function normalizeDeadlineIso(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const time = Date.parse(trimmed);
+  if (!Number.isFinite(time)) return undefined;
+  return new Date(time).toISOString();
+}
+
+// DL-2: the deadline that applies to one guest. Precedence: the invitation's
+// own override (or the link snapshot taken at self-registration) -> the public
+// link's deadline -> the main content deadline -> the code constant (only when
+// the stored main deadline is blank or invalid).
+export function getEffectiveRsvpDeadline(
+  content: Pick<WeddingContent, "rsvpDeadline">,
+  {
+    invitation,
+    inviteType,
+  }: {
+    invitation?: Pick<InvitationGroup, "rsvpDeadline"> | null;
+    inviteType?: Pick<PublicInviteType, "rsvpDeadline"> | null;
+  } = {},
+): string {
+  return (
+    normalizeDeadlineIso(invitation?.rsvpDeadline) ??
+    normalizeDeadlineIso(inviteType?.rsvpDeadline) ??
+    normalizeDeadlineIso(content.rsvpDeadline) ??
+    RSVP_DEADLINE
+  );
+}
+
+// DL-7: the content object guest pages may serialize into the browser. The
+// deadline is the one that applies to this visitor, and the list of public
+// link codes is removed so one link's page can't reveal another link's code.
+export function toGuestContent(
+  content: WeddingContent,
+  effectiveDeadline: string,
+): WeddingContent {
+  return {
+    ...content,
+    rsvpDeadline: effectiveDeadline,
+    publicInviteTypes: [],
+  };
+}
+
+// CL-11: the invitation fields guest pages may serialize into the browser.
+// An explicit allowlist shared by /invite/[code], /discover-medan and
+// /travel-accommodation so they can't drift: email, phone and privateNotes
+// never leave the server (emailClaimed is the safe boolean stand-in).
+export function toGuestInvitation(invitation: InvitationGroup): InvitationGroup {
+  return {
+    id: invitation.id,
+    code: invitation.code,
+    greeting: invitation.greeting,
+    groupName: invitation.groupName,
+    emailClaimed: Boolean(invitation.email),
+    maxGuests: invitation.maxGuests,
+    side: invitation.side,
+    source: invitation.source,
+    flow: invitation.flow,
+    eligibleEvents: invitation.eligibleEvents,
+    openedAt: invitation.openedAt,
+    rsvp: invitation.rsvp,
+    guests: invitation.guests,
+    // No PII — booleans + dates that drive the travel page / RSVP form.
+    travelOverrides: invitation.travelOverrides,
+    // Per-invitation deadline override / link snapshot (not PII).
+    rsvpDeadline: invitation.rsvpDeadline,
+  };
+}
+
+// CL-8: whole days left to RSVP (rounded up, at least 1), or null once RSVP
+// is closed. Built on isRsvpClosed so the countdown hides exactly when the
+// closed state starts (no gap at the deadline instant).
+export function getRsvpDaysLeft(
+  deadlineIso: string,
+  now = new Date(),
+): number | null {
+  if (isRsvpClosed(deadlineIso, now)) return null;
+  const msLeft = new Date(deadlineIso).getTime() - now.getTime();
+  if (!Number.isFinite(msLeft)) return null;
+  return Math.max(1, Math.ceil(msLeft / (1000 * 60 * 60 * 24)));
+}
+
+const WHATSAPP_HOSTS = new Set(["wa.me", "api.whatsapp.com", "whatsapp.com"]);
+
+// CL-3: a WhatsApp contact link guests can safely open. A full https link on
+// a WhatsApp host is kept verbatim (e.g. the wa.me/message/... short link);
+// a phone number (digits, +, spaces, dashes, dots, brackets) becomes
+// https://wa.me/<digits>. Anything else (http:, javascript:, other hosts,
+// local numbers starting with 0) is rejected -> undefined.
+export function normalizeWhatsAppUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/^[+\d\s().-]+$/.test(trimmed)) {
+    const digits = trimmed.replace(/\D/g, "");
+    if (digits.length < 7 || digits.length > 15 || digits.startsWith("0")) {
+      return undefined;
+    }
+    return `https://wa.me/${digits}`;
+  }
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "https:") return undefined;
+  if (url.username || url.password) return undefined;
+  if (!WHATSAPP_HOSTS.has(url.hostname.toLowerCase())) return undefined;
+  return trimmed;
+}
+
+// CL-3: trimmed contact email, or undefined unless it is one plain address.
+// Only letters, digits and . _ + - are allowed around the @, so the value
+// can't add mailto: header fields (?bcc=, &body=, %0D%0A, #) to the link.
+export function normalizeContactEmail(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 254) return undefined;
+  return /^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(trimmed)
+    ? trimmed
+    : undefined;
+}
+
+// CL-3: keep only valid contact fields. An object with no valid field is
+// returned as {} (the "cleared" representation), never undefined, so a
+// cleared contact survives save + publish instead of falling back to the
+// code default.
+export function normalizeRsvpContact(value: unknown): RsvpContact {
+  const source =
+    value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const whatsappUrl = normalizeWhatsAppUrl(source.whatsappUrl);
+  const email = normalizeContactEmail(source.email);
+  return {
+    ...(whatsappUrl ? { whatsappUrl } : {}),
+    ...(email ? { email } : {}),
+  };
+}
+
+export function hasRsvpContact(contact: RsvpContact | undefined) {
+  return Boolean(contact?.whatsappUrl || contact?.email);
+}
+
+// DL-11: human date for a deadline in the wedding timezone, e.g.
+// "12 October 2026" (en) / "12 Oktober 2026" (id).
+export function formatRsvpDeadlineDate(
+  deadlineIso: string,
+  timeZone: string = WEDDING_TIMEZONE,
+  language: "en" | "id" = "en",
+) {
+  return new Intl.DateTimeFormat(language === "id" ? "id-ID" : "en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone,
+  }).format(new Date(deadlineIso));
 }
 
 const eventAttendanceSchema = z
@@ -536,18 +702,32 @@ export function buildAdminWhatsAppMessage({
   content,
   messageType,
   baseUrl,
+  now = new Date(),
 }: {
   invitation: InvitationGroup;
   content: WeddingContent;
   messageType: AdminWhatsAppMessageType;
   baseUrl: string;
+  now?: Date;
 }) {
   const siteUrl = baseUrl.replace(/\/$/, "");
   const inviteUrl = `${siteUrl}/invite/${encodeURIComponent(invitation.code)}`;
   const travelUrl = `${siteUrl}/travel-accommodation?code=${encodeURIComponent(
     invitation.code,
   )}`;
-  const deadline = content.rsvpDeadline;
+  // DL-11: the invitation's effective deadline as a readable Jakarta date,
+  // not the raw ISO string of the global deadline. "until", not "before":
+  // the deadline day itself is still open (deadlines are set to 23:59 WIB).
+  const effectiveDeadline = getEffectiveRsvpDeadline(content, { invitation });
+  const deadline = formatRsvpDeadlineDate(
+    effectiveDeadline,
+    content.timezone || WEDDING_TIMEZONE,
+  );
+  // Once the deadline has passed (e.g. a late RSVP recorded by the admin),
+  // don't promise updates until a date in the past.
+  const updateLine = isRsvpClosed(effectiveDeadline, now)
+    ? "If anything changes, just reply to this message."
+    : `You may update your RSVP until ${deadline}.`;
 
   if (messageType === "rsvp_confirmation") {
     return `${invitation.greeting}
@@ -565,7 +745,7 @@ ${adminGuestLines(invitation)}
 Your invitation link:
 ${inviteUrl}
 
-You may update your RSVP before ${deadline}.
+${updateLine}
 
 With love,
 Edward & Jessica`;
@@ -601,6 +781,7 @@ export function generateInviteCode(seed: string) {
 export function buildNameInviteCode(
   name: string,
   existingCodes: string[] = [],
+  reservedCodes: string[] = [],
 ) {
   const base =
     name
@@ -609,8 +790,14 @@ export function buildNameInviteCode(
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "")
       .slice(0, 32) || "GUEST";
+  // DL-12: never hand out a personal code equal to a public link code
+  // (reservedCodes), or that guest's invite would shadow the link at
+  // /invite/<CODE>.
   const usedCodes = new Set(
-    existingCodes.map(normalizeInviteCode).concat(GENERIC_INVITE_CODE),
+    existingCodes
+      .concat(reservedCodes)
+      .map(normalizeInviteCode)
+      .concat(GENERIC_INVITE_CODE),
   );
   if (!usedCodes.has(base)) return base;
 

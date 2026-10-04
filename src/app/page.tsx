@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { SelfRegisterInvitePage } from "@/components/site/self-register-invite-page";
 import { getPublishedContent } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
-import { getDefaultPublicInviteType } from "@/lib/rsvp";
+import {
+  getDefaultPublicInviteType,
+  getEffectiveRsvpDeadline,
+  toGuestContent,
+} from "@/lib/rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +41,15 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function Page() {
   const content = await getPublishedContent();
+  const inviteType = getDefaultPublicInviteType(content);
+  // DL-7: effective (link) deadline, no other link codes in the payload.
   return (
     <SelfRegisterInvitePage
-      content={content}
-      inviteType={getDefaultPublicInviteType(content)}
+      content={toGuestContent(
+        content,
+        getEffectiveRsvpDeadline(content, { inviteType }),
+      )}
+      inviteType={inviteType}
     />
   );
 }

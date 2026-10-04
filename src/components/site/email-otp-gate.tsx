@@ -13,14 +13,19 @@ export function EmailOtpGate({
   autoVerifySession = true,
   code,
   defaultEmail,
+  intro,
   language,
   onVerified,
+  title,
 }: {
   autoVerifySession?: boolean;
   code?: string;
   defaultEmail?: string;
+  /** CL-7: optional intro/heading for non-RSVP uses (closed-link lookup). */
+  intro?: string;
   language: Language;
   onVerified: (email: string) => void;
+  title?: string;
 }) {
   const c = copy[language];
   const [email, setEmail] = useState(defaultEmail || "");
@@ -151,10 +156,10 @@ export function EmailOtpGate({
         {c.verifyEmailTitle}
       </p>
       <h3 className="serif" style={{ fontSize: "2rem", marginTop: 10 }}>
-        {c.tellUsWhoIsComing}
+        {title ?? c.tellUsWhoIsComing}
       </h3>
       <p className="muted" style={{ marginTop: 12 }}>
-        {code ? c.inviteEmailIntro : c.verifyEmailIntro}
+        {intro ?? (code ? c.inviteEmailIntro : c.verifyEmailIntro)}
       </p>
       <form onSubmit={sendCode} style={{ marginTop: 18 }}>
         <label className="form-field" htmlFor="guest-otp-email">
