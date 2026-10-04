@@ -59,6 +59,7 @@ export const copy = {
     phoneWhatsApp: "Phone / WhatsApp (include country code)",
     guestCount: "Number of guests",
     guestCountHint: "This link allows up to {count} guests.",
+    guestCountHintOne: "This link is for 1 guest.",
     plusOneName: "Plus-one name",
     guestNames: "Guest names",
     guestName: "Guest {number} name",
@@ -124,9 +125,32 @@ export const copy = {
     // Countdown
     daysLeftRsvp: "{d} days left to RSVP",
     daysLeftUrgent: "RSVP closes soon — {d} days left",
+    // CL-8: singular form (1 day is always inside the 14-day urgent window)
+    daysLeftUrgentOne: "RSVP closes soon — 1 day left",
     // RSVP closed state
     rsvpClosed: "RSVP is now closed",
     rsvpClosedContact: "Please contact us directly for any changes.",
+    // CL-1: the guest's own status on the closed card
+    closedStatusPending: "We didn't receive an RSVP from you before the deadline.",
+    closedStatusAttending:
+      "You're confirmed as attending — we can't wait to celebrate with you.",
+    closedStatusDeclined: "You let us know you can't make it — we'll miss you.",
+    closedGuestsAttending: "{count} guests attending",
+    closedGuestAttendingOne: "1 guest attending",
+    // CL-3: lead-in above the WhatsApp / email links
+    closedReachOut: "Need to change anything? Please get in touch with us:",
+    closedReachOutPending:
+      "If you'd still like to join us, please get in touch with us:",
+    contactWhatsApp: "Message us on WhatsApp",
+    contactEmail: "Email us",
+    // CL-7: returning guests on a closed public link
+    alreadyRegisteredOpen: "Already registered? Open my invitation",
+    closedLookupTitle: "Find your invitation",
+    closedLookupIntro:
+      "Enter the email you registered with. We'll send a one-time code and open your invitation.",
+    closedLookupNotFound:
+      "We couldn't find an invitation for this email. RSVP is now closed, so new registrations are no longer possible.",
+    tryAnotherEmail: "Try another email",
     // Success states
     successAttendingHeading: "Thank you — your RSVP is confirmed.",
     successAttendingSub: "See you on 12 December 2026",
@@ -185,6 +209,8 @@ export const copy = {
     phoneWhatsApp: "Nomor telepon / WhatsApp (sertakan kode negara)",
     guestCount: "Jumlah tamu",
     guestCountHint: "Tautan ini berlaku untuk maksimal {count} tamu.",
+    // Same wording as the plural (Indonesian has no plural form)
+    guestCountHintOne: "Tautan ini berlaku untuk maksimal 1 tamu.",
     plusOneName: "Nama pendamping",
     guestNames: "Nama tamu",
     guestName: "Nama tamu {number}",
@@ -250,9 +276,30 @@ export const copy = {
     // Countdown — ID NEEDS REVIEW by Edward
     daysLeftRsvp: "{d} hari lagi untuk RSVP",
     daysLeftUrgent: "RSVP segera ditutup — {d} hari lagi",
+    // CL-8: same wording as the plural (Indonesian has no plural form)
+    daysLeftUrgentOne: "RSVP segera ditutup — 1 hari lagi",
     // RSVP closed state — ID NEEDS REVIEW by Edward
     rsvpClosed: "RSVP telah ditutup",
     rsvpClosedContact: "Silakan hubungi kami langsung untuk perubahan.",
+    // CL-1 / CL-3 / CL-7: closed-state copy — ID NEEDS REVIEW by Edward
+    closedStatusPending: "Kami belum menerima RSVP dari Anda hingga batas waktu.",
+    closedStatusAttending:
+      "Kehadiran Anda sudah terkonfirmasi — kami tidak sabar merayakan hari bahagia ini bersama Anda.",
+    closedStatusDeclined:
+      "Anda telah mengabarkan bahwa Anda tidak dapat hadir — kami akan merindukan Anda.",
+    closedGuestsAttending: "{count} tamu hadir",
+    closedGuestAttendingOne: "1 tamu hadir",
+    closedReachOut: "Ada yang perlu diubah? Silakan hubungi kami:",
+    closedReachOutPending: "Jika Anda masih ingin hadir, silakan hubungi kami:",
+    contactWhatsApp: "Hubungi kami via WhatsApp",
+    contactEmail: "Kirim email kepada kami",
+    alreadyRegisteredOpen: "Sudah terdaftar? Buka undangan saya",
+    closedLookupTitle: "Temukan undangan Anda",
+    closedLookupIntro:
+      "Masukkan email yang Anda gunakan saat mendaftar. Kami akan mengirim kode sekali pakai lalu membuka undangan Anda.",
+    closedLookupNotFound:
+      "Kami tidak menemukan undangan untuk email ini. RSVP telah ditutup, sehingga pendaftaran baru tidak dapat dilakukan lagi.",
+    tryAnotherEmail: "Coba email lain",
     // Success states — ID NEEDS REVIEW by Edward
     successAttendingHeading: "Terima kasih — RSVP Anda telah dikonfirmasi.",
     successAttendingSub: "Sampai jumpa pada 12 Desember 2026",
@@ -263,3 +310,19 @@ export const copy = {
     updateTravelPlans: "Perbarui rencana perjalanan",
   },
 } as const;
+
+// Guest-count note for a link/invitation; singular for 1 guest.
+export function guestCountHintText(language: Language, count: number) {
+  const c = copy[language];
+  if (count === 1) return c.guestCountHintOne;
+  return c.guestCountHint.replace("{count}", String(count));
+}
+
+// CL-8: countdown label for a days-left value from getRsvpDaysLeft (never 0:
+// the countdown is hidden once RSVP is closed). Urgent at 14 days or fewer.
+export function rsvpCountdownText(language: Language, daysLeft: number) {
+  const c = copy[language];
+  if (daysLeft === 1) return c.daysLeftUrgentOne;
+  const template = daysLeft <= 14 ? c.daysLeftUrgent : c.daysLeftRsvp;
+  return template.replace("{d}", String(daysLeft));
+}

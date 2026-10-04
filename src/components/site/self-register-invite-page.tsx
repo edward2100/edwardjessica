@@ -11,7 +11,7 @@ import { InteractiveGallery } from "@/components/site/interactive-gallery";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   RegisterBackgroundMusic,
   useBackgroundMusic,
@@ -22,18 +22,21 @@ import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
 import { OpeningCover } from "@/components/site/opening-cover";
 import { PhoneCountryInput } from "@/components/site/phone-country-input";
+import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
 import { BrideGroomSection } from "@/components/site/bride-groom-section";
 import { SaveDateSection } from "@/components/site/save-date-section";
 import { SlotImage } from "@/components/site/slot-image";
 import { StorySection } from "@/components/site/story-section";
 import {
+  customPublicLinkCode,
   discoverMedanHref,
   invitationHref,
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
-import { copy, text } from "@/lib/i18n";
+import { copy, guestCountHintText, rsvpCountdownText, text } from "@/lib/i18n";
 import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
-import { isRsvpClosed } from "@/lib/rsvp";
+import { getRsvpDaysLeft, hasRsvpContact, isRsvpClosed } from "@/lib/rsvp";
+import { useRsvpClosed } from "@/lib/use-rsvp-closed";
 import type {
   EventKey,
   InvitationGroup,
@@ -78,15 +81,38 @@ export function SelfRegisterInvitePage({
 
   const c = copy[language];
   const activeCode = savedInvitation?.code;
-  const currentInvitationHref = invitationHref(activeCode, inviteType.flow);
-  const currentTravelHref = travelAccommodationHref(activeCode, inviteType.flow);
-  const currentDiscoverHref = discoverMedanHref(activeCode, inviteType.flow);
+  // DL-9: until the guest has a personal code, menu + Discover/Travel links
+  // keep a custom link's identity (its short path) instead of /jessmarried.
+  const linkCode = customPublicLinkCode(inviteType);
+  const currentInvitationHref = invitationHref(
+    activeCode,
+    inviteType.flow,
+    linkCode,
+  );
+  const currentTravelHref = travelAccommodationHref(
+    activeCode,
+    inviteType.flow,
+    linkCode,
+  );
+  const currentDiscoverHref = discoverMedanHref(
+    activeCode,
+    inviteType.flow,
+    linkCode,
+  );
   const isTravelFlow = inviteType.flow === "overseas" || inviteType.flow === "family";
 
-  const rsvpClosed = useMemo(
-    () => isRsvpClosed(content.rsvpDeadline),
-    [content.rsvpDeadline],
-  );
+  // CL-5: also flips to closed when the deadline passes while the page is open.
+  const deadlinePassed = useRsvpClosed(content.rsvpDeadline);
+  // CL-5: a 403 "closed" answer from the server also switches to closed.
+  const [closedByServer, setClosedByServer] = useState(false);
+  const rsvpClosed = deadlinePassed || closedByServer;
+  const hasContact = hasRsvpContact(content.rsvpContact);
+  // CL-7: "Already registered? Open my invitation" on a closed link. Only ever
+  // opens an existing invitation; never shows the registration form.
+  const [closedLookup, setClosedLookup] = useState<
+    "idle" | "checking" | "verify" | "found" | "notFound"
+  >("idle");
+  const [closedLookupAttempt, setClosedLookupAttempt] = useState(0);
 
   // Non-classic opening animations replace the hero "Open Invitation" button
   // with a full-screen cover, and the reveal lands guests on the hero top
@@ -199,6 +225,68 @@ export function SelfRegisterInvitePage({
     }, 40);
   }
 
+  // CL-7: resolve the verified browser session to the guest's own invitation
+  // and open it. Returns false when there is no session or no invitation.
+  async function openRegisteredInvitation() {
+    try {
+      const response = await fetch(
+        `/api/guest-auth/resolve-invite?flow=${encodeURIComponent(inviteType.flow)}`,
+      );
+      const json = (await response.json()) as {
+        invitation?: InvitationGroup;
+      };
+      if (response.ok && json.invitation?.code) {
+        setClosedLookup("found");
+        if (isTravelFlow) {
+          window.localStorage.setItem(
+            `edward-jessica-${inviteType.flow}-invite-code`,
+            json.invitation.code,
+          );
+        }
+        router.push(`/invite/${encodeURIComponent(json.invitation.code)}` as Route);
+        return true;
+      }
+    } catch {
+      // Network error: treated as "not found" below.
+    }
+    return false;
+  }
+
+  async function startClosedLookup() {
+    setClosedLookup("checking");
+    window.setTimeout(() => {
+      document
+        .getElementById("closed-lookup")
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 40);
+    // An already verified browser session may know this guest.
+    if (await openRegisteredInvitation()) return;
+    setClosedLookup("verify");
+  }
+
+  async function finishClosedLookup() {
+    setClosedLookup("checking");
+    if (await openRegisteredInvitation()) return;
+    setClosedLookup("notFound");
+  }
+
+  function retryClosedLookup() {
+    setClosedLookupAttempt((attempt) => attempt + 1);
+    setClosedLookup("verify");
+  }
+
+  // CL-5: the server said RSVP is closed — show the closed card instead of
+  // the form and bring it into view.
+  function handleRsvpClosedByServer() {
+    setClosedByServer(true);
+    setShowRsvpForm(false);
+    window.setTimeout(() => {
+      document
+        .getElementById("rsvp")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
+  }
+
   function navigateToPersonalInvite() {
     if (!savedInvitation) return;
     router.push(`/invite/${encodeURIComponent(savedInvitation.code)}` as Route);
@@ -213,7 +301,8 @@ export function SelfRegisterInvitePage({
       setShowRsvpForm(true);
       void resolveExistingSession();
       window.setTimeout(() => {
-        formRef.current?.scrollIntoView({
+        // CL-9: when RSVP is closed there is no form; land on the section.
+        (formRef.current ?? document.getElementById("rsvp"))?.scrollIntoView({
           behavior: "smooth",
           block: "start",
         });
@@ -236,7 +325,8 @@ export function SelfRegisterInvitePage({
         language={language}
         travelHref={currentTravelHref}
       />
-      {hasOpenedInvitation ? <FloatingRsvpButton /> : null}
+      {/* CL-6: no floating RSVP shortcut once RSVP is closed. */}
+      {hasOpenedInvitation && !rsvpClosed ? <FloatingRsvpButton /> : null}
       <RegisterBackgroundMusic src={content.musicUrl} />
 
       {useCover && !hasOpenedInvitation ? (
@@ -383,7 +473,92 @@ export function SelfRegisterInvitePage({
       <section className="section" id="rsvp">
         <div className="page-shell">
           {/* E1-4: show a closed notice when the invite type is disabled */}
-          {!inviteType.isEnabled || rsvpClosed ? (
+          {rsvpClosed ? (
+            <>
+              <div className="rsvp-callout">
+                <div>
+                  {/* CL-7: "RSVP", not "Confirm Attendance", once closed. */}
+                  <p className="eyebrow">{c.rsvp}</p>
+                  <h2
+                    className="serif"
+                    style={{
+                      fontSize: "clamp(2.2rem, 6vw, 5rem)",
+                      lineHeight: 0.95,
+                    }}
+                  >
+                    {c.rsvpClosed}
+                  </h2>
+                  <p className="muted" style={{ marginTop: 14 }}>
+                    {hasContact ? c.closedReachOutPending : c.rsvpClosedContact}
+                  </p>
+                </div>
+                <div className="rsvp-actions">
+                  {/* CL-3: WhatsApp / email contact when set. */}
+                  <RsvpContactLinks
+                    contact={content.rsvpContact}
+                    language={language}
+                  />
+                  {/* CL-7: returning guests can still reach their invite. */}
+                  {closedLookup === "idle" ? (
+                    <button
+                      className="button button-muted"
+                      type="button"
+                      onClick={() => void startClosedLookup()}
+                    >
+                      {c.alreadyRegisteredOpen}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {closedLookup !== "idle" ? (
+                <div
+                  id="closed-lookup"
+                  style={{ marginTop: 24, maxWidth: 620 }}
+                >
+                  {closedLookup === "verify" ? (
+                    <EmailOtpGate
+                      autoVerifySession={false}
+                      intro={c.closedLookupIntro}
+                      key={closedLookupAttempt}
+                      language={language}
+                      onVerified={() => void finishClosedLookup()}
+                      title={c.closedLookupTitle}
+                    />
+                  ) : closedLookup === "notFound" ? (
+                    <div className="invite-panel">
+                      <p className="eyebrow">{c.closedLookupTitle}</p>
+                      <p className="muted" style={{ marginTop: 12 }}>
+                        {c.closedLookupNotFound}
+                      </p>
+                      <button
+                        className="button button-muted"
+                        type="button"
+                        onClick={retryClosedLookup}
+                        style={{ marginTop: 18 }}
+                      >
+                        {c.tryAnotherEmail}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="invite-panel">
+                      <p className="eyebrow">{c.closedLookupTitle}</p>
+                      <h3
+                        className="serif"
+                        style={{ fontSize: "2rem", marginTop: 10 }}
+                      >
+                        {closedLookup === "found"
+                          ? c.openingPersonalInvite
+                          : c.checkingExistingRsvp}
+                      </h3>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </>
+          ) : !inviteType.isEnabled ? (
+            /* Link switched off while RSVP is still open: its original card.
+               The CL-3/CL-7 closed card above is for a passed deadline. */
             <div className="rsvp-callout">
               <div>
                 <p className="eyebrow">{c.registerRsvp}</p>
@@ -394,16 +569,14 @@ export function SelfRegisterInvitePage({
                     lineHeight: 0.95,
                   }}
                 >
-                  {rsvpClosed ? c.rsvpClosed : (language === "id"
+                  {language === "id"
                     ? "Pendaftaran ditutup"
-                    : "Registration closed")}
+                    : "Registration closed"}
                 </h2>
                 <p className="muted" style={{ marginTop: 14 }}>
-                  {rsvpClosed
-                    ? c.rsvpClosedContact
-                    : language === "id"
-                      ? "Pendaftaran untuk undangan ini sudah ditutup. Mohon hubungi kami jika ada pertanyaan."
-                      : "Registration for this invitation is no longer available. Please contact us if you have any questions."}
+                  {language === "id"
+                    ? "Pendaftaran untuk undangan ini sudah ditutup. Mohon hubungi kami jika ada pertanyaan."
+                    : "Registration for this invitation is no longer available. Please contact us if you have any questions."}
                 </p>
               </div>
             </div>
@@ -486,10 +659,7 @@ export function SelfRegisterInvitePage({
                         eyebrow + guest-count note here to avoid duplication. */}
                     <p className="eyebrow">{c.registerRsvp}</p>
                     <p className="muted" style={{ marginTop: 14 }}>
-                      {c.guestCountHint.replace(
-                        "{count}",
-                        String(inviteType.maxGuests),
-                      )}
+                      {guestCountHintText(language, inviteType.maxGuests)}
                     </p>
                   </div>
                   {isResolvingInvite ? (
@@ -508,6 +678,7 @@ export function SelfRegisterInvitePage({
                       events={content.events}
                       inviteType={inviteType}
                       language={language}
+                      onClosed={handleRsvpClosedByServer}
                       onEmailStatus={setEmailStatus}
                       onSaved={openSavedInvitation}
                     />
@@ -533,6 +704,7 @@ function SelfRegisterForm({
   events,
   inviteType,
   language,
+  onClosed,
   onEmailStatus,
   onSaved,
 }: {
@@ -540,6 +712,8 @@ function SelfRegisterForm({
   events: WeddingContent["events"];
   inviteType: PublicInviteType;
   language: Language;
+  /** CL-5: called when the server answers 403 (RSVP closed). */
+  onClosed: () => void;
   onEmailStatus: (status: "sent" | "failed" | "skipped") => void;
   onSaved: (invitation: InvitationGroup) => void;
 }) {
@@ -557,6 +731,8 @@ function SelfRegisterForm({
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  // CL-5: checked on every render, so a deadline that passes on the guest's
+  // own clock while the form is open is noticed on the next keystroke.
   const closed = isRsvpClosed(content.rsvpDeadline);
   const maxGuests = Math.max(1, inviteType.maxGuests || 1);
   const isAttending = status === "attending";
@@ -565,6 +741,12 @@ function SelfRegisterForm({
     (inviteType.requireGuestNames || inviteType.flow === "family");
   const needsPlusOneName =
     isAttending && !needsEveryGuestName && guestCount > 1;
+
+  // CL-5: closed by the guest's own clock — switch the section to the closed
+  // card, like a 403 from the server.
+  useEffect(() => {
+    if (closed) onClosed();
+  }, [closed, onClosed]);
 
   function setCount(nextCount: number) {
     const normalizedCount = Math.min(maxGuests, Math.max(1, nextCount || 1));
@@ -599,7 +781,11 @@ function SelfRegisterForm({
   // E1-1: wrapped in try/catch to prevent UI freeze on network failure
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (closed) return;
+    // CL-5: closed by the guest's own clock — same switch as a 403.
+    if (closed) {
+      onClosed();
+      return;
+    }
     setNotice("");
     setLoading(true);
     const finalGuestNames = resolvedGuestNames();
@@ -625,6 +811,13 @@ function SelfRegisterForm({
         emailStatus?: "sent" | "failed" | "skipped";
       };
       setLoading(false);
+      // CL-5: 403 = RSVP closed. Localized closed message (never the
+      // generic "try again"), then the parent switches to the closed card.
+      if (response.status === 403) {
+        setNotice(c.deadlineClosed);
+        onClosed();
+        return;
+      }
       if (!response.ok || !json.invitation) {
         setNotice(
           language === "id"
@@ -738,7 +931,7 @@ function SelfRegisterForm({
             </label>
           </div>
           <p className="muted" style={{ marginTop: 8 }}>
-            {c.guestCountHint.replace("{count}", String(maxGuests))}
+            {guestCountHintText(language, maxGuests)}
           </p>
 
           {needsEveryGuestName ? (
@@ -871,14 +1064,10 @@ function SelfRegRsvpCountdownLine({
   deadlineIso: string;
   language: Language;
 }) {
-  const c = copy[language];
-  const now = new Date();
-  const deadline = new Date(deadlineIso);
-  const msLeft = deadline.getTime() - now.getTime();
-  if (msLeft <= 0) return null;
-  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-  const template = daysLeft <= 14 ? c.daysLeftUrgent : c.daysLeftRsvp;
-  const label = template.replace("{d}", String(daysLeft));
+  // CL-8: same closed rule as isRsvpClosed; singular "1 day left".
+  const daysLeft = getRsvpDaysLeft(deadlineIso);
+  if (daysLeft === null) return null;
+  const label = rsvpCountdownText(language, daysLeft);
   return (
     <p className="muted" style={{ marginTop: 10, fontWeight: 700 }}>
       {label}

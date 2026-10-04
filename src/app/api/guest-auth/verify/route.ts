@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
-import { ensureInvitationEmailAllowed } from "@/lib/data-store";
+import {
+  ensureInvitationEmailAllowed,
+  getInvitationByCode,
+  getPublishedContent,
+} from "@/lib/data-store";
 import { isSupabaseConfigured } from "@/lib/env";
 import { normalizeGuestEmail, setGuestAuthCookie } from "@/lib/guest-auth";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { normalizeInviteCode, validateInviteCode } from "@/lib/rsvp";
+import {
+  getEffectiveRsvpDeadline,
+  isRsvpClosed,
+  normalizeInviteCode,
+  validateInviteCode,
+} from "@/lib/rsvp";
 import { createSupabaseAuthClient } from "@/lib/supabase";
 
 export async function POST(request: Request) {
@@ -57,8 +66,19 @@ export async function POST(request: Request) {
     }
 
     if (code && validateInviteCode(code)) {
-      await ensureInvitationEmailAllowed(normalizeInviteCode(code), normalizedEmail, {
-        claimIfEmpty: true,
+      const normalizedCode = normalizeInviteCode(code);
+      // An unclaimed invitation is only claimed while its RSVP is open (its
+      // own effective deadline, so an admin extension still allows it).
+      // After the deadline a claim has no use and would let anyone who knows
+      // the code lock the real guest out.
+      const [content, invitation] = await Promise.all([
+        getPublishedContent(),
+        getInvitationByCode(normalizedCode),
+      ]);
+      await ensureInvitationEmailAllowed(normalizedCode, normalizedEmail, {
+        claimIfEmpty: !isRsvpClosed(
+          getEffectiveRsvpDeadline(content, { invitation }),
+        ),
       });
     }
 

@@ -38,6 +38,8 @@ import {
   eventKeys,
   generateInviteCode,
   hasAtLeastOneAttendingEvent,
+  normalizeDeadlineIso,
+  normalizeRsvpContact,
 } from "@/lib/rsvp";
 import { sampleHistory, sampleInvitations } from "@/lib/seed";
 import { createSupabaseServiceClient } from "@/lib/supabase";
@@ -162,6 +164,13 @@ function normalizeWeddingContent(
     gallery: content.gallery || weddingContent.gallery,
     events: normalizeWeddingEvents(content.events),
     notes: content.notes || weddingContent.notes,
+    // CL-3: stored content without the key (everything published before this
+    // field existed) inherits the code default; a stored value, including {}
+    // (cleared by the admin), is validated and kept as is.
+    rsvpContact:
+      content.rsvpContact === undefined
+        ? normalizeRsvpContact(weddingContent.rsvpContact)
+        : normalizeRsvpContact(content.rsvpContact),
   };
 }
 
@@ -373,6 +382,9 @@ function normalizePublicInviteType(
     inviteType.flow === "overseas"
       ? inviteType.flow
       : fallback.flow;
+  // DL-3: keep a valid per-link deadline, drop blank/invalid ones (absent =
+  // inherit the main deadline). The fallback's deadline is never inherited.
+  const rsvpDeadline = normalizeDeadlineIso(inviteType.rsvpDeadline);
 
   return {
     id: inviteType.id || fallback.id,
@@ -396,6 +408,7 @@ function normalizePublicInviteType(
       en: inviteType.description?.en || fallback.description?.en || "",
       id: inviteType.description?.id || fallback.description?.id || "",
     },
+    ...(rsvpDeadline ? { rsvpDeadline } : {}),
   };
 }
 
@@ -494,6 +507,36 @@ function missingTravelOverridesColumn(
   return /travel_overrides/i.test(msg);
 }
 
+// DL-5: detect when the rsvp_deadline column has not been migrated yet. It is
+// checked BEFORE missingFlowColumn, whose "schema cache" fallback would
+// otherwise match this column's PostgREST error too. rsvp_deadline is only
+// ever sent when there is a deadline to write or an override to clear, so
+// saves without one never reach this.
+function missingRsvpDeadlineColumn(
+  error: { code?: string; message?: string } | null,
+) {
+  if (!error) return false;
+  const msg = error.message || "";
+  if (error.code === "42703") return /rsvp_deadline/.test(msg);
+  return /rsvp_deadline/i.test(msg);
+}
+
+const RSVP_DEADLINE_MIGRATION_ERROR =
+  "RSVP deadlines on invitations and links need the 20261004_add_invitation_rsvp_deadline.sql migration. Run it in the Supabase SQL editor, then save again.";
+
+// DL-5: the rsvp_deadline key for an admin write. Present only when there is
+// an override to save, or an existing override to clear (explicit null);
+// otherwise omitted, so the stored value is kept and the write is identical
+// to the pre-migration payload.
+function rsvpDeadlineColumnPatch(
+  next: string | null | undefined,
+  previous: string | undefined,
+): { rsvp_deadline?: string | null } {
+  if (next) return { rsvp_deadline: next };
+  if (next === null && previous) return { rsvp_deadline: null };
+  return {};
+}
+
 function normalizeAdminGuest(guest: AdminGuestInput): AdminGuestInput {
   // Names are optional at the admin level: an admin can create a party with
   // just a group label + max size and let guests enter their own names on
@@ -515,7 +558,9 @@ function mealPreferenceOrUnset(value: unknown): Guest["mealPreference"] {
 
 function normalizeAdminInvitationInput(
   input: AdminInvitationUpsert,
-): AdminInvitationUpsert {
+): Omit<AdminInvitationUpsert, "rsvpDeadline"> & {
+  rsvpDeadline?: string | null;
+} {
   const groupName = cleanOptionalText(input.groupName);
   const greeting = cleanOptionalText(input.greeting);
   if (!groupName) throw new Error("Group name is required.");
@@ -545,6 +590,21 @@ function normalizeAdminInvitationInput(
     flow === "overseas"
       ? normalizeTravelOverrides(input.travelOverrides)
       : undefined;
+  // DL-5: a date = set the override; null / "" = clear it; key absent = keep
+  // whatever is stored (so a payload from an older or partial client can't
+  // wipe a guest's link snapshot). A non-blank value that is not a date is
+  // rejected rather than silently clearing an existing override.
+  const rsvpDeadline =
+    input.rsvpDeadline === undefined
+      ? undefined
+      : (normalizeDeadlineIso(input.rsvpDeadline) ?? null);
+  if (
+    rsvpDeadline === null &&
+    typeof input.rsvpDeadline === "string" &&
+    input.rsvpDeadline.trim()
+  ) {
+    throw new Error("RSVP deadline override is not a valid date.");
+  }
 
   return {
     code: input.code ? input.code.trim().toUpperCase() : undefined,
@@ -562,6 +622,7 @@ function normalizeAdminInvitationInput(
     eligibleEvents,
     guests,
     travelOverrides,
+    rsvpDeadline,
   };
 }
 
@@ -649,6 +710,23 @@ export async function saveDraftContent(content: WeddingContent) {
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
     if (!supabase) throw new Error("Supabase client unavailable");
+    // DL-5: a link deadline is copied onto each registrant's rsvp_deadline.
+    // Refuse to save one until that column exists; otherwise registrations
+    // through the link would quietly drop it (the guest-facing fallback in
+    // createSelfRegisteredInvitation) and close at the main deadline.
+    if (
+      normalizedContent.publicInviteTypes.some(
+        (inviteType) => inviteType.rsvpDeadline,
+      )
+    ) {
+      const { error: columnError } = await supabase
+        .from("invitation_groups")
+        .select("rsvp_deadline")
+        .limit(1);
+      if (missingRsvpDeadlineColumn(columnError)) {
+        throw new Error(RSVP_DEADLINE_MIGRATION_ERROR);
+      }
+    }
     // B1: check write error
     const { error } = await supabase.from("content_versions").insert({
       status: "draft",
@@ -1127,15 +1205,26 @@ export async function submitRsvp(
 export async function createSelfRegisteredInvitation(
   submission: SelfRegistrationSubmission,
   inviteType?: PublicInviteType,
+  options: { reservedCodes?: string[] } = {},
 ) {
   const now = new Date().toISOString();
   const idSeed =
     submission.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "guest";
   const id = `invite-self-${idSeed}-${Date.now()}`;
+  // DL-12: public link codes (defaults + the caller's published list) are
+  // reserved so a guest's name code can never shadow a link.
   const code = buildNameInviteCode(
     submission.name,
     await getExistingInvitationCodes(),
+    [
+      ...weddingContent.publicInviteTypes.map((item) => item.code),
+      ...(options.reservedCodes || []),
+      ...(inviteType ? [inviteType.code] : []),
+    ],
   );
+  // DL-5: snapshot the link's deadline onto the invitation. Later edits to the
+  // link deadline do not move guests who already registered.
+  const linkDeadline = normalizeDeadlineIso(inviteType?.rsvpDeadline);
   const guestNames = buildSelfRegisteredGuestNames(submission);
   const guests: Guest[] = guestNames.map((name, index) => ({
     id: `${id}-guest-${index + 1}`,
@@ -1188,6 +1277,7 @@ export async function createSelfRegisteredInvitation(
       updatedBy: "guest",
     },
     guests,
+    ...(linkDeadline ? { rsvpDeadline: linkDeadline } : {}),
   };
 
   if (isSupabaseConfigured()) {
@@ -1210,14 +1300,40 @@ export async function createSelfRegisteredInvitation(
       opened_at: invitation.openedAt,
     };
 
+    // DL-5: rsvp_deadline is only sent for links that have a deadline, so
+    // JESSMARRIED/EJFAMILY/EJOVERSEAS registrations send exactly the
+    // pre-migration payload.
+    let deadlineInsert: { rsvp_deadline?: string } = invitation.rsvpDeadline
+      ? { rsvp_deadline: invitation.rsvpDeadline }
+      : {};
+
     // B5: handle unique-violation (23505) on invitation insert gracefully.
     // If the conflict is on email+flow (duplicate self-registration race), re-query
     // and return the existing invitation (idempotent success).
     let { data: insertedGroup, error } = await supabase
       .from("invitation_groups")
-      .insert({ ...groupInsert, flow: invitation.flow })
+      .insert({ ...groupInsert, ...deadlineInsert, flow: invitation.flow })
       .select("id")
       .single();
+    if (error && deadlineInsert.rsvp_deadline && missingRsvpDeadlineColumn(error)) {
+      // DL-5: deadline link used before the migration was applied — keep the
+      // registration (guest-facing) but warn loudly; the guest falls back to
+      // the main deadline until the column exists.
+      console.error(
+        "[createSelfRegisteredInvitation] WARNING: rsvp_deadline column missing from invitation_groups. " +
+          "Run the 20261004 migration. Saving without the link deadline.",
+      );
+      deadlineInsert = {};
+      const { rsvpDeadline: _droppedDeadline, ...withoutDeadline } = invitation;
+      invitation = withoutDeadline;
+      const retry = await supabase
+        .from("invitation_groups")
+        .insert({ ...groupInsert, flow: invitation.flow })
+        .select("id")
+        .single();
+      insertedGroup = retry.data;
+      error = retry.error;
+    }
     if (error && missingFlowColumn(error)) {
       // B8: missing flow/max_guests columns — legacy schema, warn loudly
       console.error(
@@ -1250,7 +1366,12 @@ export async function createSelfRegisteredInvitation(
           const suffixedCode = `${invitation.code}-${attempt}`;
           const retryResult = await supabase
             .from("invitation_groups")
-            .insert({ ...groupInsert, code: suffixedCode, flow: invitation.flow })
+            .insert({
+              ...groupInsert,
+              ...deadlineInsert,
+              code: suffixedCode,
+              flow: invitation.flow,
+            })
             .select("id")
             .single();
           retried = retryResult.data;
@@ -1908,11 +2029,19 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
         eligible_events: normalized.eligibleEvents,
         travel_overrides: normalized.travelOverrides ?? null,
         updated_at: now,
+        // DL-5: key present only to set or clear an override.
+        ...rsvpDeadlineColumnPatch(
+          normalized.rsvpDeadline,
+          existing.rsvpDeadline,
+        ),
       };
       let { error } = await supabase
         .from("invitation_groups")
         .update({ ...groupUpdate, flow: normalized.flow })
         .eq("id", existing.id);
+      if (error && missingRsvpDeadlineColumn(error)) {
+        throw new Error(RSVP_DEADLINE_MIGRATION_ERROR);
+      }
       if (error && missingTravelOverridesColumn(error)) {
         // travel_overrides migration not applied yet — retry without it.
         console.error(
@@ -1926,14 +2055,21 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
           .eq("id", existing.id);
         error = retry.error;
       }
+      if (error && missingRsvpDeadlineColumn(error)) {
+        throw new Error(RSVP_DEADLINE_MIGRATION_ERROR);
+      }
       if (error && missingFlowColumn(error)) {
         // B8: log loudly when missing columns
         console.error(
           "[upsertInvitationByAdmin] WARNING: flow/max_guests columns appear missing from invitation_groups. " +
             "Schema migration is required. Retrying without these columns.",
         );
-        const { max_guests, travel_overrides, ...legacyGroupUpdate } =
-          groupUpdate;
+        const {
+          max_guests,
+          travel_overrides,
+          rsvp_deadline,
+          ...legacyGroupUpdate
+        } = groupUpdate;
         const retry = await supabase
           .from("invitation_groups")
           .update(legacyGroupUpdate)
@@ -1957,12 +2093,17 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
         ),
         eligible_events: normalized.eligibleEvents,
         travel_overrides: normalized.travelOverrides ?? null,
+        // DL-5: key present only when the new invitation has an override.
+        ...rsvpDeadlineColumnPatch(normalized.rsvpDeadline, undefined),
       };
       let { data, error } = await supabase
         .from("invitation_groups")
         .insert({ ...groupInsert, flow: normalized.flow })
         .select("id,code")
         .single();
+      if (error && missingRsvpDeadlineColumn(error)) {
+        throw new Error(RSVP_DEADLINE_MIGRATION_ERROR);
+      }
       if (error && missingTravelOverridesColumn(error)) {
         // travel_overrides migration not applied yet — retry without it.
         console.error(
@@ -1978,14 +2119,21 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
         data = retry.data;
         error = retry.error;
       }
+      if (error && missingRsvpDeadlineColumn(error)) {
+        throw new Error(RSVP_DEADLINE_MIGRATION_ERROR);
+      }
       if (error && missingFlowColumn(error)) {
         // B8: log loudly when missing columns
         console.error(
           "[upsertInvitationByAdmin] WARNING: flow/max_guests columns appear missing from invitation_groups. " +
             "Schema migration is required. Retrying without these columns.",
         );
-        const { max_guests, travel_overrides, ...legacyGroupInsert } =
-          groupInsert;
+        const {
+          max_guests,
+          travel_overrides,
+          rsvp_deadline,
+          ...legacyGroupInsert
+        } = groupInsert;
         const retry = await supabase
           .from("invitation_groups")
           .insert(legacyGroupInsert)
@@ -2089,6 +2237,12 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
       rsvp: adjustRsvpForEligibleEvents(existing, normalized.eligibleEvents),
       guests: updatedGuests,
       travelOverrides: normalized.travelOverrides,
+      // DL-5: same semantics as the Supabase column: set, clear on null,
+      // keep when the key is absent.
+      rsvpDeadline:
+        normalized.rsvpDeadline === undefined
+          ? existing.rsvpDeadline
+          : (normalized.rsvpDeadline ?? undefined),
     };
     store.invitations = store.invitations.map((item) =>
       item.id === existing.id ? updated : item,
@@ -2124,6 +2278,7 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
       mealPreference: guest.mealPreference,
     })),
     travelOverrides: normalized.travelOverrides,
+    rsvpDeadline: normalized.rsvpDeadline ?? undefined,
   };
   store.invitations.unshift(invitation);
   return clone(invitation);
@@ -2520,6 +2675,8 @@ function mapInvitationRow(row: any): InvitationGroup {
     },
     guests,
     travelOverrides: normalizeTravelOverrides(row.travel_overrides),
+    // DL-5: NULL (or a schema without the column) = inherit the main deadline.
+    rsvpDeadline: normalizeDeadlineIso(row.rsvp_deadline),
   };
 }
 

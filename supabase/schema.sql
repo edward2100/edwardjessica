@@ -81,6 +81,15 @@ alter table invitation_groups
 add column if not exists max_guests integer not null default 1
 check (max_guests between 1 and 10);
 
+-- Per-invitation travel overrides (see migrations/20260613_add_invitation_travel_overrides.sql).
+alter table invitation_groups
+add column if not exists travel_overrides jsonb;
+
+-- Per-invitation RSVP deadline; NULL = use content.rsvpDeadline
+-- (see migrations/20261004_add_invitation_rsvp_deadline.sql).
+alter table invitation_groups
+add column if not exists rsvp_deadline timestamptz;
+
 create table if not exists guests (
   id uuid primary key default gen_random_uuid(),
   invitation_group_id uuid not null references invitation_groups(id) on delete cascade,

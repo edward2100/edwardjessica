@@ -29,6 +29,12 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { DiscoverMedanEditor } from "@/components/admin/discover-medan-editor";
 import {
+  invitationToDraft,
+  isoToJakartaLocal,
+  jakartaLocalToIso,
+} from "@/lib/admin-drafts";
+import { publicLinkShortPath } from "@/lib/guest-navigation";
+import {
   defaultImageCrop,
   FRAME_RATIOS,
   normalizeImageCrop,
@@ -39,6 +45,8 @@ import {
   buildWhatsAppMessageUrl,
   eventKeys,
   mealPreferences,
+  normalizeContactEmail,
+  normalizeWhatsAppUrl,
 } from "@/lib/rsvp";
 import type {
   AdminGuestInput,
@@ -60,6 +68,7 @@ import type {
   OpeningAnimation,
   PublicInviteFlow,
   PublicInviteType,
+  RsvpContact,
   RsvpStatus,
   TravelAccommodationOption,
   TravelPlan,
@@ -813,6 +822,39 @@ function GuestGroupEditor({
             }
           />
         </label>
+        {/* DL-10: personal RSVP deadline (extension). Blank = main deadline;
+            clearing sends an explicit null (never ""); a save without the
+            key keeps the stored override. */}
+        <div className="form-field">
+          <span>RSVP deadline override (Asia/Jakarta)</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              className="input"
+              type="datetime-local"
+              aria-label="RSVP deadline override (Asia/Jakarta)"
+              value={draft.rsvpDeadline ? isoToJakartaLocal(draft.rsvpDeadline) : ""}
+              onChange={(event) =>
+                setField(
+                  "rsvpDeadline",
+                  event.target.value
+                    ? jakartaLocalToIso(event.target.value)
+                    : null,
+                )
+              }
+            />
+            <button
+              className="button button-muted"
+              type="button"
+              disabled={!draft.rsvpDeadline}
+              onClick={() => setField("rsvpDeadline", null)}
+            >
+              Clear
+            </button>
+          </div>
+          <small className="muted">
+            Leave blank to use the main RSVP deadline.
+          </small>
+        </div>
       </div>
 
       <div style={{ marginTop: 18 }}>
@@ -1242,6 +1284,12 @@ function InvitationTable({
                     Self-registered
                   </p>
                 ) : null}
+                {invitation.rsvpDeadline ? (
+                  // DL-10: this invitation has its own RSVP deadline.
+                  <p className="muted" style={{ marginTop: 6 }}>
+                    Deadline: {formatShortJakartaDate(invitation.rsvpDeadline)}
+                  </p>
+                ) : null}
               </td>
               <td>{attendanceEventLabels(invitation)}</td>
               <td>
@@ -1606,6 +1654,23 @@ function ContentView({
     }));
   }
 
+  // CL-3: edit one contact field. An emptied field is removed (never ""),
+  // and the object itself stays ({} when both are empty) so a cleared
+  // contact is saved as cleared instead of falling back to the code default.
+  function setRsvpContactField(field: keyof RsvpContact, value: string) {
+    setDraft((current) => {
+      const nextContact: RsvpContact = { ...current.rsvpContact };
+      if (value.trim()) nextContact[field] = value;
+      else delete nextContact[field];
+      return { ...current, rsvpContact: nextContact };
+    });
+  }
+
+  const contactWhatsAppInput = draft.rsvpContact?.whatsappUrl ?? "";
+  const contactWhatsAppSaved = normalizeWhatsAppUrl(contactWhatsAppInput);
+  const contactEmailInput = draft.rsvpContact?.email ?? "";
+  const contactEmailSaved = normalizeContactEmail(contactEmailInput);
+
   function removePublicInviteType(id: string) {
     setDraft((current) => ({
       ...current,
@@ -1653,15 +1718,62 @@ function ContentView({
             className="input"
             type="datetime-local"
             value={isoToJakartaLocal(draft.rsvpDeadline)}
-            onChange={(event) =>
+            onChange={(event) => {
+              // DL-10: a blank main deadline would never close RSVP; keep the
+              // previous value instead of saving "".
+              if (!event.target.value) {
+                setNotice(
+                  "The main RSVP deadline can't be blank, so the previous value was kept.",
+                );
+                return;
+              }
+              const nextDeadline = event.target.value;
               setDraft((current) => ({
                 ...current,
                 // Treat the datetime-local value as Jakarta wall time (+07:00) so
                 // repeated open/save cycles are byte-stable with no UTC drift.
-                rsvpDeadline: jakartaLocalToIso(event.target.value),
-              }))
+                rsvpDeadline: jakartaLocalToIso(nextDeadline),
+              }));
+            }}
+          />
+        </label>
+        {/* CL-3: how guests reach you once RSVP is closed (closed RSVP cards
+            and the travel page). Blank both = generic "contact us" text. */}
+        <label className="form-field">
+          <span>RSVP contact — WhatsApp link or phone number</span>
+          <input
+            className="input"
+            placeholder="https://wa.me/… or +62 812 3456 7890"
+            value={contactWhatsAppInput}
+            onChange={(event) =>
+              setRsvpContactField("whatsappUrl", event.target.value)
             }
           />
+          <small className="muted">
+            {!contactWhatsAppInput.trim()
+              ? "Blank: no WhatsApp button for guests."
+              : contactWhatsAppSaved
+                ? `Guests will open: ${contactWhatsAppSaved}`
+                : "Not saved: use a https://wa.me/… link or a phone number with country code."}
+          </small>
+        </label>
+        <label className="form-field">
+          <span>RSVP contact — email</span>
+          <input
+            className="input"
+            type="email"
+            value={contactEmailInput}
+            onChange={(event) =>
+              setRsvpContactField("email", event.target.value)
+            }
+          />
+          <small className="muted">
+            {!contactEmailInput.trim()
+              ? "Blank: no email button for guests."
+              : contactEmailSaved
+                ? `Guests will see an "Email us" button for ${contactEmailSaved}.`
+                : "Not saved: this doesn't look like an email address."}
+          </small>
         </label>
         <label className="form-field">
           <span>Parking note EN</span>
@@ -1834,6 +1946,45 @@ function ContentView({
                     />
                   </label>
                 </div>
+                {/* DL-10: optional per-link deadline; blank = main deadline.
+                    Clearing stores no value (never ""). */}
+                <div className="form-field">
+                  <span>
+                    RSVP deadline (Asia/Jakarta) — leave blank to use the main
+                    deadline
+                  </span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      className="input"
+                      type="datetime-local"
+                      aria-label={`RSVP deadline for ${inviteType.label.en}`}
+                      value={
+                        inviteType.rsvpDeadline
+                          ? isoToJakartaLocal(inviteType.rsvpDeadline)
+                          : ""
+                      }
+                      onChange={(event) =>
+                        updatePublicInviteType(index, {
+                          rsvpDeadline: event.target.value
+                            ? jakartaLocalToIso(event.target.value)
+                            : undefined,
+                        })
+                      }
+                    />
+                    <button
+                      className="button button-muted"
+                      type="button"
+                      disabled={!inviteType.rsvpDeadline}
+                      onClick={() =>
+                        updatePublicInviteType(index, {
+                          rsvpDeadline: undefined,
+                        })
+                      }
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
                 <label className="form-field">
                   <span>Description EN</span>
                   <textarea
@@ -1863,10 +2014,7 @@ function ContentView({
                   />
                 </label>
               </div>
-              <p className="muted" style={{ marginTop: 12 }}>
-                Share as /invite/{inviteType.code}. The /family and /overseas
-                pages are preview aliases for their default flows.
-              </p>
+              <PublicLinkShareHint inviteType={inviteType} />
               <InviteTypeFlowPreview inviteType={inviteType} />
             </div>
           ))}
@@ -3295,16 +3443,44 @@ function ExportView() {
       <div
         style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}
       >
+        {/* DL-8: file downloads from API routes, not pages. The root [slug]
+            route makes this lint rule's dynamic-route regex match every path. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a className="button button-muted" href="/api/admin/export?format=csv">
           <Download size={17} />
           CSV
         </a>
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a className="button button-muted" href="/api/admin/export?format=json">
           <Download size={17} />
           JSON
         </a>
       </div>
     </div>
+  );
+}
+
+// DL-8: both share URLs for a public link: /invite/<CODE> and the short path
+// /<code-lowercase> (unless that path is taken by a built-in page).
+function PublicLinkShareHint({
+  inviteType,
+}: {
+  inviteType: PublicInviteType;
+}) {
+  const code = inviteType.code;
+  const invitePath = `/invite/${code}`;
+  const shortPath = publicLinkShortPath(code, inviteType.id);
+  const hasShortPath = !shortPath.startsWith("/invite/");
+  return (
+    <p className="muted" style={{ marginTop: 12 }}>
+      Share as {invitePath}
+      {hasShortPath ? <> or {shortPath}</> : null}.
+      {hasShortPath
+        ? null
+        : ` No short path: "/${code.toLowerCase()}" is a built-in page or not a valid path.`}{" "}
+      The /family and /overseas pages are preview aliases for their default
+      flows.
+    </p>
   );
 }
 
@@ -3412,31 +3588,19 @@ function emptyInvitationDraft(): AdminInvitationUpsert {
         mealPreference: "unset",
       },
     ],
+    rsvpDeadline: undefined,
   };
 }
 
-function invitationToDraft(invitation: InvitationGroup): AdminInvitationUpsert {
-  return {
-    code: invitation.code,
-    groupName: invitation.groupName,
-    greeting: invitation.greeting,
-    phone: invitation.phone || "",
-    email: invitation.email || "",
-    maxGuests: invitation.maxGuests || invitation.guests.length || 1,
-    side: invitation.side,
-    flow: invitation.flow,
-    privateNotes: {
-      en: invitation.privateNotes?.en || "",
-      id: invitation.privateNotes?.id || "",
-    },
-    eligibleEvents: invitation.eligibleEvents,
-    guests: invitation.guests.map((guest) => ({
-      id: guest.id,
-      name: guest.name,
-      mealPreference: guest.mealPreference,
-    })),
-    travelOverrides: invitation.travelOverrides,
-  };
+// DL-10: compact Jakarta date for table markers, e.g. "3 Nov".
+function formatShortJakartaDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "short",
+  }).format(date);
 }
 
 function formatDateTime(value?: string) {
@@ -3450,46 +3614,4 @@ function formatDateTime(value?: string) {
     minute: "2-digit",
     hour12: false,
   }).format(new Date(value));
-}
-
-/**
- * Convert an ISO instant string to a datetime-local value rendered in
- * Asia/Jakarta wall time (UTC+7). The returned string is always in the
- * format required by <input type="datetime-local">: "YYYY-MM-DDTHH:mm".
- * This ensures the deadline editor always shows the correct Jakarta time
- * regardless of the admin's browser timezone.
- */
-function isoToJakartaLocal(iso: string): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (isNaN(date.getTime())) return iso.slice(0, 16);
-  // Extract wall-time parts in Asia/Jakarta
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
-  const year = get("year");
-  const month = get("month");
-  const day = get("day");
-  const hour = get("hour") === "24" ? "00" : get("hour");
-  const minute = get("minute");
-  return `${year}-${month}-${day}T${hour}:${minute}`;
-}
-
-/**
- * Convert a datetime-local input value (treated as Asia/Jakarta wall time)
- * back to an ISO 8601 string with a +07:00 offset. This avoids the
- * browser-timezone ambiguity of `new Date(value)` and ensures that repeated
- * open/save cycles of the deadline editor are byte-stable.
- */
-function jakartaLocalToIso(localValue: string): string {
-  if (!localValue) return "";
-  // localValue is "YYYY-MM-DDTHH:mm" — append the Jakarta offset directly.
-  return `${localValue}:00+07:00`;
 }

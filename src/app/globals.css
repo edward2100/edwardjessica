@@ -1448,6 +1448,14 @@ textarea {
   align-items: start;
 }
 
+/* CL-9: #rsvp links that jump straight to a form or success card land with
+   its top clear of the fixed guest menu. */
+#rsvp-form,
+#self-rsvp-form,
+#rsvp-success {
+  scroll-margin-top: 88px;
+}
+
 .rsvp-callout {
   display: flex;
   flex-direction: column;
@@ -2506,6 +2514,15 @@ textarea {
 
   .rsvp-actions .button {
     width: 100%;
+    text-align: center;
+  }
+
+  /* CL-9: the callout is a flex column aligned to the start, so a button
+     row inside it would size to its shortest wrap and break long labels
+     ("Message us on WhatsApp") onto two lines. Let those rows span the card. */
+  .rsvp-callout > .rsvp-actions,
+  .rsvp-callout > div:has(> .rsvp-actions) {
+    align-self: stretch;
   }
 
   .phone-input-grid,

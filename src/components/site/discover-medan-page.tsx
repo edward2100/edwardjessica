@@ -27,10 +27,13 @@ export function DiscoverMedanPage({
   content,
   flow,
   invitation,
+  linkCode,
 }: {
   content: WeddingContent;
   flow: PublicInviteFlow;
   invitation?: InvitationGroup | null;
+  /** DL-9: custom public link code (validated server-side) for back-links. */
+  linkCode?: string;
 }) {
   // E2-9: initialise language from localStorage; guard for SSR with typeof-window check.
   const [language, setLanguage] = useState<Language>(() => {
@@ -45,11 +48,11 @@ export function DiscoverMedanPage({
   return (
     <main className="app-shell discover-page">
       <GuestMenu
-        discoverHref={discoverMedanHref(activeCode, activeFlow)}
+        discoverHref={discoverMedanHref(activeCode, activeFlow, linkCode)}
         flow={activeFlow}
-        invitationHref={invitationHref(activeCode, activeFlow)}
+        invitationHref={invitationHref(activeCode, activeFlow, linkCode)}
         language={language}
-        travelHref={travelAccommodationHref(activeCode, activeFlow)}
+        travelHref={travelAccommodationHref(activeCode, activeFlow, linkCode)}
       />
       <RegisterBackgroundMusic src={content.musicUrl} />
       {/* F5: hero title always "Discover Medan" — sourced from content.discoverMedan */}

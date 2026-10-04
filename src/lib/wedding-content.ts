@@ -13,6 +13,9 @@ export const weddingContent: WeddingContent = {
   weddingDate: EVENT_DATE,
   timezone: WEDDING_TIMEZONE,
   rsvpDeadline: RSVP_DEADLINE,
+  // CL-3: shown on closed RSVP cards without an admin action. The wa.me
+  // short link is kept verbatim (never converted to a phone number).
+  rsvpContact: { whatsappUrl: "https://wa.me/message/COSKSKIJH7AHP1" },
   defaultLanguage: "en",
   openingText: {
     en: "Together with our families, we invite you to celebrate our wedding.",

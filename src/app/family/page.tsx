@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import { SelfRegisterInvitePage } from "@/components/site/self-register-invite-page";
 import { getPublishedContent } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
-import { getPublicInviteTypeById } from "@/lib/rsvp";
+import {
+  getEffectiveRsvpDeadline,
+  getPublicInviteTypeById,
+  toGuestContent,
+} from "@/lib/rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -40,5 +44,14 @@ export default async function Page() {
   const content = await getPublishedContent();
   const inviteType = getPublicInviteTypeById(content, "family");
   if (!inviteType) notFound();
-  return <SelfRegisterInvitePage content={content} inviteType={inviteType} />;
+  // DL-7: effective (link) deadline, no other link codes in the payload.
+  return (
+    <SelfRegisterInvitePage
+      content={toGuestContent(
+        content,
+        getEffectiveRsvpDeadline(content, { inviteType }),
+      )}
+      inviteType={inviteType}
+    />
+  );
 }

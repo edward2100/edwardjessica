@@ -8,8 +8,13 @@ import {
   recordInviteOpen,
 } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
-import { findPublicInviteTypeByCode, normalizeInviteCode } from "@/lib/rsvp";
-import type { InvitationGroup } from "@/lib/types";
+import {
+  findPublicInviteTypeByCode,
+  getEffectiveRsvpDeadline,
+  normalizeInviteCode,
+  toGuestContent,
+  toGuestInvitation,
+} from "@/lib/rsvp";
 
 export async function generateMetadata({
   params,
@@ -68,8 +73,15 @@ export default async function Page({
 
   const publicInviteType = findPublicInviteTypeByCode(content, normalizedCode);
   if (!invitation && publicInviteType) {
+    // DL-7: public link -> that link's deadline; other link codes stripped.
     return (
-      <SelfRegisterInvitePage content={content} inviteType={publicInviteType} />
+      <SelfRegisterInvitePage
+        content={toGuestContent(
+          content,
+          getEffectiveRsvpDeadline(content, { inviteType: publicInviteType }),
+        )}
+        inviteType={publicInviteType}
+      />
     );
   }
   if (!invitation) notFound();
@@ -78,24 +90,17 @@ export default async function Page({
   // E1-7: strip PII fields before serialising the invitation into the client component props.
   // email, phone, and privateNotes must not appear in the server-rendered HTML.
   // The OTP gate loses the email pre-fill — acceptable given the PII exposure risk.
-  const safeInvitation: InvitationGroup = {
-    id: invitation.id,
-    code: invitation.code,
-    greeting: invitation.greeting,
-    groupName: invitation.groupName,
-    emailClaimed: Boolean(invitation.email),
-    maxGuests: invitation.maxGuests,
-    side: invitation.side,
-    source: invitation.source,
-    flow: invitation.flow,
-    eligibleEvents: invitation.eligibleEvents,
-    openedAt: invitation.openedAt,
-    rsvp: invitation.rsvp,
-    guests: invitation.guests,
-    // No PII — booleans + dates that drive the travel-aware RSVP form.
-    travelOverrides: invitation.travelOverrides,
-    // email, phone, and privateNotes intentionally omitted
-  };
+  // CL-11: the allowlist is shared with /discover-medan and /travel-accommodation.
+  const safeInvitation = toGuestInvitation(invitation);
 
-  return <InvitePage content={content} invitation={safeInvitation} />;
+  // DL-7: personal invite -> the invitation's effective deadline.
+  return (
+    <InvitePage
+      content={toGuestContent(
+        content,
+        getEffectiveRsvpDeadline(content, { invitation }),
+      )}
+      invitation={safeInvitation}
+    />
+  );
 }

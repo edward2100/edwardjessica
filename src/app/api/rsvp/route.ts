@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import {
   ensureInvitationEmailAllowed,
+  getInvitationByCode,
   getPublishedContent,
   submitRsvp,
 } from "@/lib/data-store";
 import { getGuestAuthSession } from "@/lib/guest-auth";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { isRsvpClosed, validateRsvpSubmission } from "@/lib/rsvp";
+import {
+  getEffectiveRsvpDeadline,
+  isRsvpClosed,
+  validateRsvpSubmission,
+} from "@/lib/rsvp";
 import { sendRsvpConfirmationEmail } from "@/lib/rsvp-confirmation-email";
 
 export async function POST(request: Request) {
@@ -26,11 +31,20 @@ export async function POST(request: Request) {
 
   try {
     const content = await getPublishedContent();
-    if (isRsvpClosed(content.rsvpDeadline)) {
+    const payload = validateRsvpSubmission(await request.json());
+    // DL-6: the closed check uses the target invitation's effective deadline
+    // (its own override / link snapshot, else the main deadline). Unknown codes
+    // fall back to the main deadline, so they get the same 403 as before when
+    // it has passed, and the existing "Invitation not found" 400 otherwise.
+    const targetInvitation = await getInvitationByCode(payload.code);
+    if (
+      isRsvpClosed(
+        getEffectiveRsvpDeadline(content, { invitation: targetInvitation }),
+      )
+    ) {
       return NextResponse.json({ error: "RSVP editing is closed." }, { status: 403 });
     }
 
-    const payload = validateRsvpSubmission(await request.json());
     const guestAuth = await getGuestAuthSession();
     if (!guestAuth?.email) {
       return NextResponse.json(

@@ -5,7 +5,17 @@ import {
   getTravelPlanByInvitationId,
 } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
-import { resolveGuestFlowContext } from "@/lib/guest-flow";
+import {
+  isExpandedGuestFlow,
+  resolveGuestFlowContext,
+} from "@/lib/guest-flow";
+import { customPublicLinkCode } from "@/lib/guest-navigation";
+import {
+  findPublicInviteTypeByCode,
+  getEffectiveRsvpDeadline,
+  toGuestContent,
+  toGuestInvitation,
+} from "@/lib/rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +51,33 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ code?: string; flow?: string }>;
+  searchParams: Promise<{ code?: string; flow?: string; link?: string }>;
 }) {
   const params = await searchParams;
   const content = await getPublishedContent();
+  // DL-9: `link` keeps a custom public link's identity across pages. Only an
+  // enabled public link type is honoured; anything else is ignored. Its flow
+  // is used when it is a travel flow (overseas/family).
+  const linkType =
+    typeof params.link === "string"
+      ? findPublicInviteTypeByCode(content, params.link)
+      : undefined;
   const { invitation, normalizedCode, requestedFlow, codeFoundButWrongFlow } =
-    await resolveGuestFlowContext(params, { expandedOnly: true });
+    await resolveGuestFlowContext(
+      {
+        code: params.code,
+        flow:
+          linkType && isExpandedGuestFlow(linkType.flow)
+            ? linkType.flow
+            : params.flow,
+      },
+      { expandedOnly: true },
+    );
+  // DL-7: a resolved invitation uses its own effective deadline; otherwise
+  // the link's (or the main) deadline.
+  const effectiveDeadline = invitation
+    ? getEffectiveRsvpDeadline(content, { invitation })
+    : getEffectiveRsvpDeadline(content, { inviteType: linkType });
 
   // B1: fetch existing travel plan for this invitation so the component can
   // show the submitted-state card when a plan already exists.
@@ -56,12 +87,14 @@ export default async function Page({
 
   return (
     <TravelAccommodationPage
-      content={content}
+      content={toGuestContent(content, effectiveDeadline)}
       flow={requestedFlow}
-      invitation={invitation}
+      // CL-11: allowlisted fields only (no email / phone / privateNotes).
+      invitation={invitation ? toGuestInvitation(invitation) : null}
       requestedCode={normalizedCode || undefined}
       codeFoundButWrongFlow={codeFoundButWrongFlow}
       existingTravelPlan={existingTravelPlan}
+      linkCode={invitation ? undefined : customPublicLinkCode(linkType)}
     />
   );
 }

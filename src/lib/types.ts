@@ -121,6 +121,19 @@ export interface WeddingContent {
   gallery: MediaAsset[];
   events: WeddingEvent[];
   publishedAt?: string;
+  /**
+   * CL-3: how guests reach the couple once RSVP is closed. Stored content
+   * without this key inherits the code default (wedding-content.ts); an empty
+   * object means the admin cleared it (guests see the generic sentence).
+   */
+  rsvpContact?: RsvpContact;
+}
+
+/** CL-3: validated contact shown on closed RSVP cards and the travel page. */
+export interface RsvpContact {
+  /** https://wa.me/..., https://api.whatsapp.com/... or https://whatsapp.com/... */
+  whatsappUrl?: string;
+  email?: string;
 }
 
 export type ImageCropSlot =
@@ -166,6 +179,12 @@ export interface PublicInviteType {
   requireGuestNames: boolean;
   isEnabled: boolean;
   description?: LocalizedString;
+  /**
+   * DL-1: optional per-link RSVP deadline (ISO instant). Absent = inherit
+   * content.rsvpDeadline. Copied onto invitations that self-register through
+   * this link (snapshot), so later link edits do not move existing guests.
+   */
+  rsvpDeadline?: string;
 }
 
 export interface MediaAsset {
@@ -216,6 +235,11 @@ export interface InvitationGroup {
   rsvp: Rsvp;
   guests: Guest[];
   travelOverrides?: InvitationTravelOverrides;
+  /**
+   * DL-1: per-invitation RSVP deadline override (ISO instant), stored in
+   * invitation_groups.rsvp_deadline. Absent = inherit content.rsvpDeadline.
+   */
+  rsvpDeadline?: string;
 }
 
 export interface Guest {
@@ -312,6 +336,11 @@ export interface AdminInvitationUpsert {
   eligibleEvents: EventKey[];
   guests: AdminGuestInput[];
   travelOverrides?: InvitationTravelOverrides;
+  /**
+   * DL-1: ISO date = set the override; null / "" = clear it (inherit the main
+   * deadline); absent = keep the stored value (none for a new invitation).
+   */
+  rsvpDeadline?: string | null;
 }
 
 export interface RsvpHistoryItem {

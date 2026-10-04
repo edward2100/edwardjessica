@@ -8,6 +8,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { RegisterBackgroundMusic } from "@/components/site/background-music";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
 import { SlotImage } from "@/components/site/slot-image";
 import {
   discoverMedanHref,
@@ -18,10 +19,13 @@ import {
 import { travelPageCopy } from "@/lib/guest-page-copy";
 import { copy } from "@/lib/i18n";
 import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
+import { hasRsvpContact } from "@/lib/rsvp";
+import { useRsvpClosed } from "@/lib/use-rsvp-closed";
 import type {
   InvitationGroup,
   Language,
   PublicInviteFlow,
+  RsvpContact,
   TravelAccommodationOption,
   TravelPlan,
   WeddingContent,
@@ -85,6 +89,7 @@ export function TravelAccommodationPage({
   requestedCode,
   codeFoundButWrongFlow,
   existingTravelPlan,
+  linkCode,
 }: {
   content: WeddingContent;
   flow: PublicInviteFlow;
@@ -95,6 +100,8 @@ export function TravelAccommodationPage({
   codeFoundButWrongFlow?: boolean;
   /** B1: pre-existing travel plan for this invitation, passed by the route page. */
   existingTravelPlan?: TravelPlan | null;
+  /** DL-9: custom public link code (validated server-side) for back-links. */
+  linkCode?: string;
 }) {
   // E2-9: initialise language from localStorage; guard for SSR with typeof-window check.
   const [language, setLanguage] = useState<Language>(() => {
@@ -111,9 +118,21 @@ export function TravelAccommodationPage({
   const isTravelFlow =
     !codeFoundButWrongFlow &&
     (activeFlow === "overseas" || activeFlow === "family");
-  const activeInvitationHref = invitationHref(invitation?.code, activeFlow);
-  const activeTravelHref = travelAccommodationHref(invitation?.code, activeFlow);
-  const activeDiscoverHref = discoverMedanHref(invitation?.code, activeFlow);
+  const activeInvitationHref = invitationHref(
+    invitation?.code,
+    activeFlow,
+    linkCode,
+  );
+  const activeTravelHref = travelAccommodationHref(
+    invitation?.code,
+    activeFlow,
+    linkCode,
+  );
+  const activeDiscoverHref = discoverMedanHref(
+    invitation?.code,
+    activeFlow,
+    linkCode,
+  );
   // Per-invitation complimentary-travel overrides (custom overseas links).
   // Absent keys keep the default offer shown.
   const travelOverrides = invitation?.travelOverrides;
@@ -136,6 +155,10 @@ export function TravelAccommodationPage({
       : c.transport;
   const canSubmitTravel =
     isTravelFlow && invitation?.rsvp.status === "attending";
+  // CL-4: content.rsvpDeadline is this visitor's effective deadline (the
+  // invitation's own one when a code resolved). Travel stays open for
+  // attending guests; everyone else gets closed copy instead of "RSVP here".
+  const rsvpClosed = useRsvpClosed(content.rsvpDeadline);
   // E2-5: show "not applicable" notice when code found but wrong flow;
   // show "invalid code" only for genuinely unknown codes.
   const showNotApplicable = Boolean(codeFoundButWrongFlow);
@@ -359,6 +382,9 @@ export function TravelAccommodationPage({
             ) : (
               <TravelPlansForm
                 canSubmitTravel={canSubmitTravel}
+                contact={content.rsvpContact}
+                rsvpClosed={rsvpClosed}
+                notApplicable={showNotApplicable}
                 invitationCode={invitation?.code}
                 language={language}
                 flow={activeFlow}
@@ -366,7 +392,7 @@ export function TravelAccommodationPage({
                 rsvpHref={
                   invitation?.code
                     ? `${activeInvitationHref}#rsvp`
-                    : `${publicInvitationHref(activeFlow)}#rsvp`
+                    : `${publicInvitationHref(activeFlow, linkCode)}#rsvp`
                 }
                 initialPlan={editingTravel ? submittedPlan : null}
                 onSubmitSuccess={(plan) => {
@@ -458,6 +484,9 @@ function TravelSubmittedCard({
 
 function TravelPlansForm({
   canSubmitTravel,
+  contact,
+  rsvpClosed,
+  notApplicable,
   flow,
   invitationCode,
   language,
@@ -468,6 +497,12 @@ function TravelPlansForm({
   transportNote,
 }: {
   canSubmitTravel: boolean;
+  /** CL-4: couple contact shown with the closed copy. */
+  contact?: RsvpContact;
+  /** CL-4: the visitor's effective RSVP deadline has passed. */
+  rsvpClosed: boolean;
+  /** E2-5: the code belongs to a guest this page does not apply to. */
+  notApplicable?: boolean;
   flow: PublicInviteFlow;
   invitationCode?: string;
   language: Language;
@@ -481,8 +516,13 @@ function TravelPlansForm({
   transportNote?: string | null;
 }) {
   const c = travelPageCopy[language];
+  const ci = copy[language];
   const isFamilyFlow = flow === "family";
   const isDeclined = rsvpStatus === "declined";
+  // CL-4: after the deadline, a guest this page does not apply to gets no
+  // closed / locked copy (it would contradict their own status); the page's
+  // "not applicable" notice explains why the form is off.
+  const hideLockedCopy = Boolean(notApplicable) && rsvpClosed;
 
   // B3: local datetime string for an ISO date
   function isoToLocal(iso?: string): string {
@@ -569,31 +609,59 @@ function TravelPlansForm({
       <div className="travel-form-heading">
         <div>
           <p className="eyebrow">{c.formTitle}</p>
-          {!canSubmitTravel ? (
+          {!canSubmitTravel && !hideLockedCopy ? (
             <p className="muted" style={{ marginTop: 8 }}>
               <LockKeyhole
                 size={15}
                 style={{ display: "inline", marginRight: 6 }}
               />
-              {isDeclined ? c.declinedTitle : c.lockedTitle}
+              {isDeclined
+                ? c.declinedTitle
+                : rsvpClosed
+                  ? ci.rsvpClosed
+                  : c.lockedTitle}
             </p>
           ) : null}
         </div>
       </div>
-      <p className="muted travel-locked-copy">
-        {canSubmitTravel ? (
-          transportNote ?? null
-        ) : isDeclined ? (
-          c.declinedCopy
-        ) : (
-          <>
-            {c.lockedCopy}{" "}
-            <Link className="travel-inline-link" href={rsvpHref as Route}>
-              {c.rsvpHere}
-            </Link>
-          </>
-        )}
-      </p>
+      {/* CL-4: no empty notice box when the page-level "not applicable"
+          notice already explains (wrong flow, RSVP closed). */}
+      {!canSubmitTravel && hideLockedCopy ? null : (
+        <p className="muted travel-locked-copy">
+          {canSubmitTravel ? (
+            transportNote ?? null
+          ) : isDeclined ? (
+            // CL-4: after the deadline a declined guest can't update the RSVP.
+            rsvpClosed ? c.declinedClosedCopy : c.declinedCopy
+          ) : rsvpClosed ? (
+            // CL-4: no "RSVP here" link to a closed form. A visitor without an
+            // invitation code may be a registered guest on a new device: link
+            // to the closed card's "Already registered? Open my invitation".
+            invitationCode ? (
+              c.closedCopy
+            ) : (
+              <>
+                {c.closedCopy}{" "}
+                <Link className="travel-inline-link" href={rsvpHref as Route}>
+                  {ci.alreadyRegisteredOpen}
+                </Link>
+              </>
+            )
+          ) : (
+            <>
+              {c.lockedCopy}{" "}
+              <Link className="travel-inline-link" href={rsvpHref as Route}>
+                {c.rsvpHere}
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+      {!canSubmitTravel && rsvpClosed && !hideLockedCopy && hasRsvpContact(contact) ? (
+        <div className="rsvp-actions">
+          <RsvpContactLinks contact={contact} language={language} />
+        </div>
+      ) : null}
 
       <label className="form-field" htmlFor="travel-arrival">
         <span>{c.arrivalField}</span>
