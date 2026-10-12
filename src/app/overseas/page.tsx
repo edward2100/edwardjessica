@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { SelfRegisterInvitePage } from "@/components/site/self-register-invite-page";
 import { getPublishedContent } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
+import { getLanguagePreference } from "@/lib/language-preference-server";
 import {
   getEffectiveRsvpDeadline,
   getPublicInviteTypeById,
@@ -44,6 +45,7 @@ export default async function Page() {
   const content = await getPublishedContent();
   const inviteType = getPublicInviteTypeById(content, "overseas");
   if (!inviteType) notFound();
+  const initialLanguage = await getLanguagePreference();
   // DL-7: effective (link) deadline, no other link codes in the payload.
   return (
     <SelfRegisterInvitePage
@@ -52,6 +54,7 @@ export default async function Page() {
         getEffectiveRsvpDeadline(content, { inviteType }),
       )}
       inviteType={inviteType}
+      initialLanguage={initialLanguage}
     />
   );
 }

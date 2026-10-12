@@ -34,8 +34,8 @@ import {
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
 import { copy, guestCountHintText, rsvpCountdownText, text } from "@/lib/i18n";
-import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import { getRsvpDaysLeft, hasRsvpContact, isRsvpClosed } from "@/lib/rsvp";
+import { useGuestLanguage } from "@/lib/use-guest-language";
 import { useRsvpClosed } from "@/lib/use-rsvp-closed";
 import type {
   EventKey,
@@ -49,13 +49,17 @@ import type {
 export function SelfRegisterInvitePage({
   content,
   inviteType,
+  initialLanguage,
 }: {
   content: WeddingContent;
   inviteType: PublicInviteType;
+  /** Saved language from the ej_language cookie, so SSR matches hydration. */
+  initialLanguage?: Language | null;
 }) {
-  // E1-2: initialize from localStorage; useState initializer runs client-side only (this is a "use client" component)
-  const [language, setLanguage] = useState<Language>(
-    () => getStoredLanguage() ?? content.defaultLanguage,
+  // E1-2: persisted language; the server renders the cookie value so hydration matches.
+  const [language, handleLanguageChange] = useGuestLanguage(
+    initialLanguage,
+    content.defaultLanguage,
   );
   const [hasOpenedInvitation, setHasOpenedInvitation] = useState(false);
   const [savedInvitation, setSavedInvitation] =
@@ -73,11 +77,6 @@ export function SelfRegisterInvitePage({
   const router = useRouter();
   const detailsRef = useRef<HTMLElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
-  // E1-2: persist language on toggle
-  function handleLanguageChange(lang: Language) {
-    setLanguage(lang);
-    storeLanguage(lang);
-  }
 
   const c = copy[language];
   const activeCode = savedInvitation?.code;

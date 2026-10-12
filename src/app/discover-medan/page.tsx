@@ -4,6 +4,7 @@ import { getPublishedContent } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
 import { resolveGuestFlowContext } from "@/lib/guest-flow";
 import { customPublicLinkCode } from "@/lib/guest-navigation";
+import { getLanguagePreference } from "@/lib/language-preference-server";
 import {
   findPublicInviteTypeByCode,
   getEffectiveRsvpDeadline,
@@ -64,6 +65,8 @@ export default async function Page({
     ? getEffectiveRsvpDeadline(content, { invitation })
     : getEffectiveRsvpDeadline(content, { inviteType: linkType });
 
+  const initialLanguage = await getLanguagePreference();
+
   return (
     <DiscoverMedanPage
       content={toGuestContent(content, effectiveDeadline)}
@@ -71,6 +74,7 @@ export default async function Page({
       // CL-11: allowlisted fields only (no email / phone / privateNotes).
       invitation={invitation ? toGuestInvitation(invitation) : null}
       linkCode={invitation ? undefined : customPublicLinkCode(linkType)}
+      initialLanguage={initialLanguage}
     />
   );
 }
