@@ -11,7 +11,6 @@ import {
   invitationHref,
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
-import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import type {
   DiscoverMedanGuideItem,
   DiscoverMedanGuideSection,
@@ -22,24 +21,28 @@ import type {
   PublicInviteFlow,
   WeddingContent,
 } from "@/lib/types";
+import { useGuestLanguage } from "@/lib/use-guest-language";
 
 export function DiscoverMedanPage({
   content,
   flow,
   invitation,
   linkCode,
+  initialLanguage,
 }: {
   content: WeddingContent;
   flow: PublicInviteFlow;
   invitation?: InvitationGroup | null;
   /** DL-9: custom public link code (validated server-side) for back-links. */
   linkCode?: string;
+  /** Saved language from the ej_language cookie, so SSR matches hydration. */
+  initialLanguage?: Language | null;
 }) {
-  // E2-9: initialise language from localStorage; guard for SSR with typeof-window check.
-  const [language, setLanguage] = useState<Language>(() => {
-    if (typeof window === "undefined") return content.defaultLanguage;
-    return getStoredLanguage() ?? content.defaultLanguage;
-  });
+  // E2-9: persisted language; the server renders the cookie value so hydration matches.
+  const [language, setLanguage] = useGuestLanguage(
+    initialLanguage,
+    content.defaultLanguage,
+  );
   const guideRef = useRef<HTMLElement | null>(null);
   const c = content.discoverMedan;
   const activeFlow = invitation?.flow || flow;
@@ -68,10 +71,7 @@ export function DiscoverMedanPage({
           <div className="travel-hero-inner">
             <LanguageToggle
               language={language}
-              onChange={(lang) => {
-                setLanguage(lang);
-                storeLanguage(lang);
-              }}
+              onChange={setLanguage}
             />
             {c.heroKicker[language] ? (
               <p className="hero-kicker" style={{ marginTop: 34 }}>

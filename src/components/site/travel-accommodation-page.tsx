@@ -18,8 +18,8 @@ import {
 } from "@/lib/guest-navigation";
 import { travelPageCopy } from "@/lib/guest-page-copy";
 import { copy } from "@/lib/i18n";
-import { getStoredLanguage, storeLanguage } from "@/lib/language-preference";
 import { hasRsvpContact } from "@/lib/rsvp";
+import { useGuestLanguage } from "@/lib/use-guest-language";
 import { useRsvpClosed } from "@/lib/use-rsvp-closed";
 import type {
   InvitationGroup,
@@ -90,6 +90,7 @@ export function TravelAccommodationPage({
   codeFoundButWrongFlow,
   existingTravelPlan,
   linkCode,
+  initialLanguage,
 }: {
   content: WeddingContent;
   flow: PublicInviteFlow;
@@ -102,12 +103,14 @@ export function TravelAccommodationPage({
   existingTravelPlan?: TravelPlan | null;
   /** DL-9: custom public link code (validated server-side) for back-links. */
   linkCode?: string;
+  /** Saved language from the ej_language cookie, so SSR matches hydration. */
+  initialLanguage?: Language | null;
 }) {
-  // E2-9: initialise language from localStorage; guard for SSR with typeof-window check.
-  const [language, setLanguage] = useState<Language>(() => {
-    if (typeof window === "undefined") return content.defaultLanguage;
-    return getStoredLanguage() ?? content.defaultLanguage;
-  });
+  // E2-9: persisted language; the server renders the cookie value so hydration matches.
+  const [language, handleLanguageChange] = useGuestLanguage(
+    initialLanguage,
+    content.defaultLanguage,
+  );
   const router = useRouter();
   const detailsRef = useRef<HTMLElement | null>(null);
   const c = travelPageCopy[language];
@@ -172,11 +175,6 @@ export function TravelAccommodationPage({
   );
 
   const showSubmittedCard = Boolean(submittedPlan) && !editingTravel;
-
-  function handleLanguageChange(lang: Language) {
-    setLanguage(lang);
-    storeLanguage(lang);
-  }
 
   useEffect(() => {
     if (invitation && isTravelFlow) {

@@ -10,6 +10,7 @@ import {
   resolveGuestFlowContext,
 } from "@/lib/guest-flow";
 import { customPublicLinkCode } from "@/lib/guest-navigation";
+import { getLanguagePreference } from "@/lib/language-preference-server";
 import {
   findPublicInviteTypeByCode,
   getEffectiveRsvpDeadline,
@@ -85,6 +86,8 @@ export default async function Page({
     ? await getTravelPlanByInvitationId(invitation.id)
     : null;
 
+  const initialLanguage = await getLanguagePreference();
+
   return (
     <TravelAccommodationPage
       content={toGuestContent(content, effectiveDeadline)}
@@ -95,6 +98,7 @@ export default async function Page({
       codeFoundButWrongFlow={codeFoundButWrongFlow}
       existingTravelPlan={existingTravelPlan}
       linkCode={invitation ? undefined : customPublicLinkCode(linkType)}
+      initialLanguage={initialLanguage}
     />
   );
 }

@@ -8,6 +8,7 @@ import {
   recordInviteOpen,
 } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
+import { getLanguagePreference } from "@/lib/language-preference-server";
 import {
   findPublicInviteTypeByCode,
   getEffectiveRsvpDeadline,
@@ -66,9 +67,10 @@ export default async function Page({
 }) {
   const { code } = await params;
   const normalizedCode = normalizeInviteCode(decodeURIComponent(code));
-  const [content, invitation] = await Promise.all([
+  const [content, invitation, initialLanguage] = await Promise.all([
     getPublishedContent(),
     getInvitationByCode(normalizedCode),
+    getLanguagePreference(),
   ]);
 
   const publicInviteType = findPublicInviteTypeByCode(content, normalizedCode);
@@ -81,6 +83,7 @@ export default async function Page({
           getEffectiveRsvpDeadline(content, { inviteType: publicInviteType }),
         )}
         inviteType={publicInviteType}
+        initialLanguage={initialLanguage}
       />
     );
   }
@@ -101,6 +104,7 @@ export default async function Page({
         getEffectiveRsvpDeadline(content, { invitation }),
       )}
       invitation={safeInvitation}
+      initialLanguage={initialLanguage}
     />
   );
 }

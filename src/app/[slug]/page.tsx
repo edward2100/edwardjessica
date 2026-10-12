@@ -5,6 +5,7 @@ import { SelfRegisterInvitePage } from "@/components/site/self-register-invite-p
 import { getPublishedContent } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
 import { isPublicLinkSlug } from "@/lib/guest-navigation";
+import { getLanguagePreference } from "@/lib/language-preference-server";
 import {
   findPublicInviteTypeByCode,
   getEffectiveRsvpDeadline,
@@ -81,6 +82,7 @@ export default async function Page({
   const content = await getContent();
   const inviteType = findPublicInviteTypeByCode(content, code);
   if (!inviteType) notFound();
+  const initialLanguage = await getLanguagePreference();
   // DL-7: the link's own deadline; no other link codes in the payload.
   return (
     <SelfRegisterInvitePage
@@ -89,6 +91,7 @@ export default async function Page({
         getEffectiveRsvpDeadline(content, { inviteType }),
       )}
       inviteType={inviteType}
+      initialLanguage={initialLanguage}
     />
   );
 }
