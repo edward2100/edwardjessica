@@ -445,7 +445,7 @@ describe("late RSVP copy, email and export (LR-2/LR-3/LR-4)", () => {
   it("the confirmation email adds one sentence for a late RSVP and is otherwise unchanged", () => {
     const invitation = invitationWith("email-late", { submittedAt: "2026-10-20T03:00:00.000Z" });
     const lateLine =
-      "<p>Since this came after our RSVP date, we'll confirm your place with you.</p>";
+      "<p>Since this came after our RSVP date, we'll confirm your place with you. We'd also appreciate a quick message to Edward or Jessica on Telegram or WhatsApp.</p>";
     const onTime = buildRsvpConfirmationEmail({ content: weddingContent, invitation });
     const notLate = buildRsvpConfirmationEmail({
       content: weddingContent,

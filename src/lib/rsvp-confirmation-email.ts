@@ -106,7 +106,7 @@ export function buildRsvpConfirmationEmail({
   // no follow-up); otherwise the email is unchanged.
   const lateLine =
     late && invitation.rsvp.status !== "declined"
-      ? `\n      <p>Since this came after our RSVP date, we'll confirm your place with you.</p>`
+      ? `\n      <p>Since this came after our RSVP date, we'll confirm your place with you. We'd also appreciate a quick message to Edward or Jessica on Telegram or WhatsApp.</p>`
       : "";
 
   const html = `

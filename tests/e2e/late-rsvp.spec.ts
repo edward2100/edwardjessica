@@ -62,7 +62,7 @@ test("after the deadline, a guest self-registers late on /jessmarried", async ({
   await expect(rsvp.getByRole("heading", { name: en.rsvpClosed })).toBeVisible();
   await expect(
     rsvp.getByText(
-      "Missed the date? You can still send a late RSVP until 31 December 2099, or get in touch with us:",
+      "Missed the date? You can still send a late RSVP. If you do, we'd appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
     ),
   ).toBeVisible();
   const lateButton = rsvp.getByRole("button", { name: en.sendLateRsvp });

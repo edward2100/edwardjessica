@@ -137,7 +137,7 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
     declinedClosedCopy:
       "Your RSVP is marked as not attending, so no travel details are needed. If your plans have changed, please contact us directly.",
     lateDeclinedCopy:
-      "Your RSVP is marked as not attending, so no travel details are needed. If your plans have changed, you can still update your RSVP{until}.",
+      "Your RSVP is marked as not attending, so no travel details are needed. If your plans have changed, you can still update your RSVP. If you do, we'd appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
     rsvpHere: "RSVP here",
     invalidCode:
       "We could not find this overseas invitation code. Please reopen this page from your RSVP confirmation or invite link.",
@@ -210,7 +210,7 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
       "RSVP Anda tercatat tidak hadir, jadi detail perjalanan tidak diperlukan. Jika rencana Anda berubah, silakan hubungi kami langsung.",
     // LR-4: late-window copy — ID NEEDS REVIEW by Edward
     lateDeclinedCopy:
-      "RSVP Anda tercatat tidak hadir, jadi detail perjalanan tidak diperlukan. Jika rencana Anda berubah, Anda masih dapat memperbarui RSVP{until}.",
+      "RSVP Anda tercatat tidak hadir, jadi detail perjalanan tidak diperlukan. Jika rencana Anda berubah, Anda masih dapat memperbarui RSVP. Jika Anda memperbaruinya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     rsvpHere: "RSVP di sini",
     invalidCode:
       "Kami tidak dapat menemukan kode undangan overseas ini. Mohon buka halaman ini dari konfirmasi RSVP atau tautan undangan Anda.",
