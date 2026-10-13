@@ -5,6 +5,8 @@ import {
   E2E_PORT,
 } from "./tests/e2e/e2e-env";
 
+const LATE_RSVP_SPEC = /late-rsvp\.spec\.ts$/;
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
@@ -34,7 +36,26 @@ export default defineConfig({
   },
   projects: [
     { name: "setup", testMatch: /\.setup\.ts$/ },
-    { name: "chromium", use: { ...devices["Desktop Chrome"] }, dependencies: ["setup"] },
-    { name: "mobile", use: { ...devices["iPhone 14"] }, dependencies: ["setup"] }
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
+      testIgnore: LATE_RSVP_SPEC
+    },
+    {
+      name: "mobile",
+      use: { ...devices["iPhone 14"] },
+      dependencies: ["setup"],
+      testIgnore: LATE_RSVP_SPEC
+    },
+    // LR-5: publishes a deadline in the past, which every other spec on the
+    // shared in-memory server would see, so it runs alone after both browser
+    // projects (and restores the open deadline).
+    {
+      name: "late-rsvp",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["chromium", "mobile"],
+      testMatch: LATE_RSVP_SPEC
+    }
   ]
 });

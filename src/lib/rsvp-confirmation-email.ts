@@ -65,10 +65,13 @@ export function buildRsvpConfirmationEmail({
   content,
   invitation,
   language = "en",
+  late = false,
 }: {
   content: WeddingContent;
   invitation: InvitationGroup;
   language?: Language;
+  /** LR-2: saved in the late window (after the guest's RSVP deadline). */
+  late?: boolean;
 }) {
   const inviteUrl = `${getSiteUrl().replace(/\/$/, "")}/invite/${encodeURIComponent(
     invitation.code,
@@ -99,13 +102,19 @@ export function buildRsvpConfirmationEmail({
     invitation.rsvp.status === "declined"
       ? "We received your RSVP for Edward & Jessica's wedding"
       : "Your RSVP for Edward & Jessica's wedding";
+  // LR-2: one extra sentence for a late attending RSVP (a late decline needs
+  // no follow-up); otherwise the email is unchanged.
+  const lateLine =
+    late && invitation.rsvp.status !== "declined"
+      ? `\n      <p>Since this came after our RSVP date, we'll confirm your place with you.</p>`
+      : "";
 
   const html = `
     <div style="font-family: Arial, sans-serif; color: #2f2924; line-height: 1.55; max-width: 620px; margin: 0 auto;">
       <p style="letter-spacing: 0.18em; text-transform: uppercase; color: #aa7e52; font-weight: 700;">Edward & Jessica</p>
       <h1 style="font-family: Georgia, serif; font-size: 32px; line-height: 1.1; margin: 12px 0;">We received your RSVP</h1>
       <p>Hi ${escapeHtml(invitation.groupName)},</p>
-      <p>Thank you for confirming your RSVP. Here are the details we have received:</p>
+      <p>Thank you for confirming your RSVP. Here are the details we have received:</p>${lateLine}
 
       <h2 style="font-size: 18px; margin-top: 28px;">RSVP Status</h2>
       <p>${escapeHtml(statusLabel(invitation.rsvp.status))}</p>
@@ -130,9 +139,12 @@ export function buildRsvpConfirmationEmail({
 export async function sendRsvpConfirmationEmail({
   content,
   invitation,
+  late = false,
 }: {
   content: WeddingContent;
   invitation: InvitationGroup;
+  /** LR-2: true when the route accepted this RSVP in the late window. */
+  late?: boolean;
 }): Promise<RsvpEmailResult> {
   if (!invitation.email) {
     return { status: "skipped", reason: "Invitation has no email." };
@@ -151,6 +163,7 @@ export async function sendRsvpConfirmationEmail({
   const { subject, html } = buildRsvpConfirmationEmail({
     content,
     invitation,
+    late,
   });
 
   const response = await fetch("https://api.resend.com/emails", {

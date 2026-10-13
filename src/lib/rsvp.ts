@@ -3,10 +3,14 @@ import type {
   AdminWhatsAppMessageType,
   EventKey,
   InvitationGroup,
+  LateResponse,
+  LateRsvpSetting,
   MealPreference,
   PublicInviteType,
   RsvpContact,
+  RsvpHistoryItem,
   RsvpSubmission,
+  RsvpWindow,
   SelfRegistrationSubmission,
   TravelAccommodationOption,
   TravelPlanSubmission,
@@ -106,9 +110,90 @@ export function getEffectiveRsvpDeadline(
   );
 }
 
+// LR-1: the stored late-RSVP setting, validated. `enabled` must be exactly
+// true (anything else switches late RSVPs off); a blank or invalid `until` is
+// dropped, which means no end date.
+export function normalizeLateRsvp(value: unknown): LateRsvpSetting {
+  const source =
+    value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const until = normalizeDeadlineIso(source.until);
+  return {
+    enabled: source.enabled === true,
+    ...(until ? { until } : {}),
+  };
+}
+
+// LR-1: whether late RSVPs are accepted at `now`. The `until` instant itself
+// is still open, like an RSVP deadline (strict >); no `until` = no end date.
+export function isLateRsvpOpen(
+  content: Pick<WeddingContent, "lateRsvp">,
+  now = new Date(),
+) {
+  const lateRsvp = content.lateRsvp;
+  if (lateRsvp?.enabled !== true) return false;
+  const until = normalizeDeadlineIso(lateRsvp.until);
+  return until === undefined || !isRsvpClosed(until, now);
+}
+
+// LR-1: "open" until the guest's effective deadline, then "late" while late
+// RSVPs are accepted, then "closed". Server routes and guest pages share it.
+export function getRsvpWindow(
+  effectiveDeadline: string,
+  content: Pick<WeddingContent, "lateRsvp">,
+  now = new Date(),
+): RsvpWindow {
+  if (!isRsvpClosed(effectiveDeadline, now)) return "open";
+  return isLateRsvpOpen(content, now) ? "late" : "closed";
+}
+
+// LR-3: the latest guest-made change per invitation id, from rsvp_history
+// rows (admin rows are ignored).
+export function latestGuestChanges(
+  history: Pick<RsvpHistoryItem, "invitationGroupId" | "changedBy" | "changedAt">[],
+) {
+  const latest = new Map<string, string>();
+  for (const item of history) {
+    if (item.changedBy !== "guest") continue;
+    const current = latest.get(item.invitationGroupId);
+    if (!current || Date.parse(item.changedAt) > Date.parse(current)) {
+      latest.set(item.invitationGroupId, item.changedAt);
+    }
+  }
+  return latest;
+}
+
+// LR-3: answers that reached the couple after the guest's effective deadline,
+// by invitation id. "late": the first answer came after it (submittedAt is
+// kept on resubmission, and an admin recording a guest who never answered
+// sets it to that moment, which is late too). Otherwise "changed_late": the
+// guest changed an on-time answer after it. Admin-only changes never count.
+export function deriveLateResponses(
+  invitations: InvitationGroup[],
+  content: Pick<WeddingContent, "rsvpDeadline">,
+  latestGuestChangeAt: ReadonlyMap<string, string>,
+) {
+  const lateResponses: Record<string, LateResponse> = {};
+  for (const invitation of invitations) {
+    const deadline = Date.parse(
+      getEffectiveRsvpDeadline(content, { invitation }),
+    );
+    const { status, submittedAt } = invitation.rsvp;
+    if (status !== "pending" && submittedAt && Date.parse(submittedAt) > deadline) {
+      lateResponses[invitation.id] = { kind: "late", at: submittedAt };
+      continue;
+    }
+    const changedAt = latestGuestChangeAt.get(invitation.id);
+    if (changedAt && Date.parse(changedAt) > deadline) {
+      lateResponses[invitation.id] = { kind: "changed_late", at: changedAt };
+    }
+  }
+  return lateResponses;
+}
+
 // DL-7: the content object guest pages may serialize into the browser. The
 // deadline is the one that applies to this visitor, and the list of public
 // link codes is removed so one link's page can't reveal another link's code.
+// LR-1: lateRsvp is kept; guest pages need it for the late window.
 export function toGuestContent(
   content: WeddingContent,
   effectiveDeadline: string,

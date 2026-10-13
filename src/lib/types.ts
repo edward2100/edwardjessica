@@ -8,6 +8,9 @@ export type MealPreference = "vegetarian" | "non_vegetarian" | "unset";
 
 export type RsvpStatus = "pending" | "attending" | "declined";
 
+/** LR-1: where a guest stands: before their deadline, in the late window, or closed. */
+export type RsvpWindow = "open" | "late" | "closed";
+
 export type GuestSide = "groom" | "bride" | "joint";
 
 export type AdminRole = "super_admin";
@@ -127,6 +130,12 @@ export interface WeddingContent {
    * object means the admin cleared it (guests see the generic sentence).
    */
   rsvpContact?: RsvpContact;
+  /**
+   * LR-1: late RSVPs once a guest's RSVP deadline has passed. Stored content
+   * without this key inherits the code default (wedding-content.ts), so the
+   * setting goes live on deploy without an admin action.
+   */
+  lateRsvp?: LateRsvpSetting;
 }
 
 /** CL-3: validated contact shown on closed RSVP cards and the travel page. */
@@ -134,6 +143,21 @@ export interface RsvpContact {
   /** https://wa.me/..., https://api.whatsapp.com/... or https://whatsapp.com/... */
   whatsappUrl?: string;
   email?: string;
+}
+
+/** LR-1: whether (and until when) late RSVPs are accepted. */
+export interface LateRsvpSetting {
+  enabled: boolean;
+  /** ISO instant, inclusive. Absent = late RSVPs have no end date. */
+  until?: string;
+}
+
+/** LR-3: an answer that reached the couple after the guest's RSVP deadline. */
+export interface LateResponse {
+  /** "late" = first answer after the deadline; "changed_late" = answered in time, changed by the guest after it. */
+  kind: "late" | "changed_late";
+  /** When it arrived (ISO). */
+  at: string;
 }
 
 export type ImageCropSlot =
@@ -378,6 +402,11 @@ export interface AdminSnapshot {
   history: RsvpHistoryItem[];
   messageLogs: AdminMessageLog[];
   travelPlans: TravelPlan[];
+  /**
+   * LR-3: late answers by invitation id, derived on the server from the RSVP
+   * and its history (no stored flag). No entry = on time or not answered.
+   */
+  lateResponses: Record<string, LateResponse>;
 }
 
 export interface GuestCsvRow {

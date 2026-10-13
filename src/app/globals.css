@@ -5,6 +5,8 @@
   --paper: #f7f0e4;
   --champagne: #d9c49f;
   --gold: #ad8354;
+  /* LR-4: gold text on light backgrounds (outline buttons, late notes). */
+  --gold-dark: #8a5f36;
   --olive: #6f7650;
   --ink: #2f2a24;
   --muted: #73675b;
@@ -330,6 +332,14 @@ textarea {
   background: var(--gold);
   color: white;
   box-shadow: 0 16px 36px rgba(100, 74, 45, 0.18);
+}
+
+/* LR-4: late "Update my RSVP" — gold outline, so it doesn't compete with a
+   filled gold travel / Discover button on the same card. */
+.button-gold-outline {
+  border-color: var(--gold);
+  background: var(--ivory);
+  color: var(--gold-dark);
 }
 
 .floating-rsvp-button {
@@ -1489,6 +1499,39 @@ textarea {
   justify-content: flex-start;
 }
 
+/* LR-4: "Late RSVP · Our RSVP date was …" above a late RSVP form. */
+.late-rsvp-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  border: 1px solid rgba(173, 131, 84, 0.42);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: rgba(173, 131, 84, 0.1);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.late-rsvp-notice svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--gold-dark);
+}
+
+/* LR-4: the success card's "received late" sentence. */
+.late-rsvp-saved {
+  margin-top: 10px;
+  color: var(--gold-dark);
+  font-weight: 700;
+}
+
+.late-rsvp-saved svg {
+  display: inline;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
 .choice-row,
 .guest-meal-row {
   display: flex;
@@ -1794,6 +1837,35 @@ textarea {
 .status-pill.declined {
   background: #f1ded7;
   color: #7a332d;
+}
+
+/* LR-3: admin status cell — the RSVP status plus a late marker. */
+.rsvp-status-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.late-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  border: 1px solid rgba(173, 131, 84, 0.5);
+  border-radius: 999px;
+  padding: 0 9px;
+  background: rgba(173, 131, 84, 0.14);
+  color: var(--gold-dark);
+  font-size: 0.74rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.metric small {
+  display: block;
+  margin-top: 4px;
 }
 
 /* Bride & Groom section — two framed portraits with a decorative ampersand. */

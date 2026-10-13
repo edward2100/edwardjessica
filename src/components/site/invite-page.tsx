@@ -3,6 +3,7 @@
 import {
   CalendarDays,
   CheckCircle2,
+  Clock,
   MapPin,
   MessageSquareText,
   Send,
@@ -20,6 +21,7 @@ import { EmailOtpGate } from "@/components/site/email-otp-gate";
 import { FloatingRsvpButton } from "@/components/site/floating-rsvp-button";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { LateRsvpNotice } from "@/components/site/late-rsvp-notice";
 import { OpeningCover } from "@/components/site/opening-cover";
 import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
 import { BrideGroomSection } from "@/components/site/bride-groom-section";
@@ -31,22 +33,29 @@ import {
   invitationHref,
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
-import { copy, guestCountHintText, rsvpCountdownText, text } from "@/lib/i18n";
+import {
+  copy,
+  guestCountHintText,
+  lateRsvpText,
+  rsvpCountdownText,
+  text,
+} from "@/lib/i18n";
 import {
   getRsvpDaysLeft,
+  getRsvpWindow,
   hasRsvpContact,
-  isRsvpClosed,
   mealPreferences,
   normalizeInviteCode,
 } from "@/lib/rsvp";
 import { useGuestLanguage } from "@/lib/use-guest-language";
-import { useRsvpClosed } from "@/lib/use-rsvp-closed";
+import { useRsvpWindow } from "@/lib/use-rsvp-closed";
 import type {
   EventKey,
   InvitationGroup,
   Language,
   MealPreference,
   RsvpStatus,
+  RsvpWindow,
   WeddingContent,
 } from "@/lib/types";
 
@@ -109,14 +118,31 @@ export function InvitePage({
     .filter(Boolean)
     .join(" · ");
 
-  // CL-5: also flips to closed when the deadline passes while the page is open.
-  const deadlinePassed = useRsvpClosed(content.rsvpDeadline);
+  // CL-5 / LR-4: "open", "late" or "closed" for this guest, switching while
+  // the page is open (at the deadline, and when late RSVPs end).
+  const liveRsvpWindow = useRsvpWindow(content.rsvpDeadline, content);
   // CL-5: a 403 "closed" answer from the server (e.g. a device clock that is
   // behind) also switches to closed.
   const [closedByServer, setClosedByServer] = useState(false);
-  const rsvpClosed = deadlinePassed || closedByServer;
+  const rsvpWindow: RsvpWindow = closedByServer ? "closed" : liveRsvpWindow;
   const rsvpStatus = currentInvitation.rsvp.status;
   const hasContact = hasRsvpContact(content.rsvpContact);
+  // LR-4: the late card's reach-out line, e.g. "You can still send a late
+  // RSVP until 3 November 2026, or get in touch with us:".
+  const lateReachOut = lateRsvpText(
+    rsvpStatus === "pending"
+      ? hasContact
+        ? c.lateReachOutPending
+        : c.lateReachOutPendingNoContact
+      : hasContact
+        ? c.lateReachOutResponded
+        : c.lateReachOutRespondedNoContact,
+    language,
+    content.lateRsvp?.until,
+    content.timezone,
+  );
+  // LR-4: set by a save in the late window, for the success card's sentence.
+  const [lateSaved, setLateSaved] = useState<"rsvp" | "change" | null>(null);
   // CL-1: attending summary on the closed card ("2 guests attending ·
   // Events: …"), from the saved RSVP.
   const closedAttendingSummary =
@@ -145,6 +171,46 @@ export function InvitePage({
           .filter(Boolean)
           .join(" · ")
       : "";
+
+  // CL-1 / CL-2: heading, the guest's own status and (attending) their next
+  // step. Shared by the closed card and LR-4's late card.
+  const closedHeading = (
+    <>
+      <p className="eyebrow">{c.rsvp}</p>
+      <h2
+        className="serif"
+        style={{ fontSize: "clamp(2.2rem, 6vw, 5rem)", lineHeight: 0.95 }}
+      >
+        {c.rsvpClosed}
+      </h2>
+      <p className="muted" style={{ marginTop: 14 }}>
+        {rsvpStatus === "attending"
+          ? c.closedStatusAttending
+          : rsvpStatus === "declined"
+            ? c.closedStatusDeclined
+            : c.closedStatusPending}
+      </p>
+      {closedAttendingSummary ? (
+        <p className="muted" style={{ marginTop: 8, fontWeight: 700 }}>
+          {closedAttendingSummary}
+        </p>
+      ) : null}
+    </>
+  );
+  const attendingNextStep =
+    rsvpStatus === "attending" ? (
+      <div className="rsvp-actions">
+        {isTravelFlow ? (
+          <Link className="button button-brown" href={currentTravelHref as Route}>
+            {c.submitTravelPlans}
+          </Link>
+        ) : (
+          <Link className="button button-brown" href={currentDiscoverHref as Route}>
+            {c.medanGuide}
+          </Link>
+        )}
+      </div>
+    ) : null;
 
   // Non-classic opening animations replace the hero "Open Invitation" button
   // with a full-screen cover, and the reveal lands guests on the hero top
@@ -189,7 +255,11 @@ export function InvitePage({
     }, 40);
   }
 
-  function handleRsvpSaved(saved: InvitationGroup) {
+  function handleRsvpSaved(saved: InvitationGroup, late: boolean) {
+    // LR-4: a late first answer, or a late change to an earlier answer.
+    setLateSaved(
+      late ? (currentInvitation.rsvp.status === "pending" ? "rsvp" : "change") : null,
+    );
     setCurrentInvitation(saved);
     setRsvpJustSaved(true);
     setShowRsvpForm(false);
@@ -237,8 +307,11 @@ export function InvitePage({
         language={language}
         travelHref={currentTravelHref}
       />
-      {/* CL-6: no floating RSVP shortcut once RSVP is closed. */}
-      {hasOpenedInvitation && !rsvpClosed ? <FloatingRsvpButton /> : null}
+      {/* CL-6: no floating RSVP shortcut once RSVP is closed (LR-4: it
+          stays while late RSVPs are open). */}
+      {hasOpenedInvitation && rsvpWindow !== "closed" ? (
+        <FloatingRsvpButton />
+      ) : null}
       <RegisterBackgroundMusic src={content.musicUrl} />
 
       {useCover && !hasOpenedInvitation ? (
@@ -380,31 +453,13 @@ export function InvitePage({
 
       <section className="section" id="rsvp">
         <div className="page-shell">
-          {rsvpClosed ? (
+          {rsvpWindow === "closed" ? (
             /* Closed state — replace form area entirely. CL-1: the guest's
                own status; CL-2: attending guests keep their next step;
                CL-3: how to reach the couple. */
             <div className="rsvp-callout">
               <div>
-                <p className="eyebrow">{c.rsvp}</p>
-                <h2
-                  className="serif"
-                  style={{ fontSize: "clamp(2.2rem, 6vw, 5rem)", lineHeight: 0.95 }}
-                >
-                  {c.rsvpClosed}
-                </h2>
-                <p className="muted" style={{ marginTop: 14 }}>
-                  {rsvpStatus === "attending"
-                    ? c.closedStatusAttending
-                    : rsvpStatus === "declined"
-                      ? c.closedStatusDeclined
-                      : c.closedStatusPending}
-                </p>
-                {closedAttendingSummary ? (
-                  <p className="muted" style={{ marginTop: 8, fontWeight: 700 }}>
-                    {closedAttendingSummary}
-                  </p>
-                ) : null}
+                {closedHeading}
                 {!hasContact ? (
                   <p className="muted" style={{ marginTop: 14 }}>
                     {c.rsvpClosedContact}
@@ -413,19 +468,7 @@ export function InvitePage({
               </div>
               {/* CL-2: the next step sits above the reach-out sentence, so its
                   colon points at the contact links, not at this button. */}
-              {rsvpStatus === "attending" ? (
-                <div className="rsvp-actions">
-                  {isTravelFlow ? (
-                    <Link className="button button-brown" href={currentTravelHref as Route}>
-                      {c.submitTravelPlans}
-                    </Link>
-                  ) : (
-                    <Link className="button button-brown" href={currentDiscoverHref as Route}>
-                      {c.medanGuide}
-                    </Link>
-                  )}
-                </div>
-              ) : null}
+              {attendingNextStep}
               {hasContact ? (
                 <div>
                   <p className="muted">
@@ -447,7 +490,45 @@ export function InvitePage({
               {/* Hide the confirm/update callout once the RSVP is confirmed in
                   this session — the success card below replaces it (it has its
                   own update action). */}
-              {!rsvpJustSaved ? (
+              {!rsvpJustSaved && rsvpWindow === "late" ? (
+                /* LR-4: late window — the closed card (same status and next
+                   step) with a late RSVP button beside the contact links. It
+                   opens the same email check + form as the open state. */
+                <div className="rsvp-callout">
+                  <div>{closedHeading}</div>
+                  {attendingNextStep}
+                  <div>
+                    <p className="muted">{lateReachOut}</p>
+                    <div className="rsvp-actions" style={{ marginTop: 14 }}>
+                      {rsvpStatus === "pending" ? (
+                        <button
+                          className="button button-brown"
+                          type="button"
+                          onClick={revealRsvpForm}
+                        >
+                          <Clock size={18} />
+                          {c.sendLateRsvp}
+                        </button>
+                      ) : (
+                        /* Gold outline, so it doesn't compete with a filled
+                           gold travel / Discover button above it. */
+                        <button
+                          className="button button-gold-outline"
+                          type="button"
+                          onClick={revealRsvpForm}
+                        >
+                          <Clock size={18} />
+                          {c.updateMyRsvp}
+                        </button>
+                      )}
+                      <RsvpContactLinks
+                        contact={content.rsvpContact}
+                        language={language}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : !rsvpJustSaved ? (
                 <div className="rsvp-callout">
                   <div>
                     <p className="eyebrow">{c.rsvp}</p>
@@ -508,6 +589,7 @@ export function InvitePage({
                     isTravelFlow={isTravelFlow}
                     travelHref={currentTravelHref}
                     discoverHref={currentDiscoverHref}
+                    lateSaved={lateSaved}
                     onUpdate={revealRsvpForm}
                   />
                 </div>
@@ -528,6 +610,16 @@ export function InvitePage({
                     {/* Heading lives in the OTP box on the right; keep only the
                         eyebrow + guest-count note here to avoid duplication. */}
                     <p className="eyebrow">{c.rsvp}</p>
+                    {/* LR-4: "Late RSVP · …", or "Late change · …" for a guest
+                        who already answered. */}
+                    {rsvpWindow === "late" ? (
+                      <LateRsvpNotice
+                        change={rsvpStatus !== "pending"}
+                        deadlineIso={content.rsvpDeadline}
+                        language={language}
+                        timeZone={content.timezone}
+                      />
+                    ) : null}
                     <p className="muted" style={{ marginTop: 14 }}>
                       {currentInvitation.maxGuests > currentInvitation.guests.length
                         ? guestCountHintText(
@@ -579,7 +671,8 @@ function RsvpForm({
   /** CL-5: called when the server answers 403 (RSVP closed). */
   onClosed: () => void;
   onEmailStatus: (status: "sent" | "failed" | "skipped") => void;
-  onSaved: (invitation: InvitationGroup) => void;
+  /** LR-4: `late` = the server saved it in the late window. */
+  onSaved: (invitation: InvitationGroup, late: boolean) => void;
 }) {
   const c = copy[language];
   const [status, setStatus] = useState<RsvpStatus>(
@@ -629,7 +722,8 @@ function RsvpForm({
   const [loading, setLoading] = useState(false);
   // CL-5: checked on every render, so a deadline that passes on the guest's
   // own clock while the form is open is noticed on the next keystroke.
-  const closed = isRsvpClosed(content.rsvpDeadline);
+  // LR-4: only a "closed" window locks it; the late window keeps it usable.
+  const closed = getRsvpWindow(content.rsvpDeadline, content) === "closed";
   const events = content.events.filter((eventItem) =>
     invitation.eligibleEvents.includes(eventItem.key),
   );
@@ -677,6 +771,7 @@ function RsvpForm({
         invitation?: InvitationGroup;
         error?: string;
         emailStatus?: "sent" | "failed" | "skipped";
+        late?: boolean;
       };
       setLoading(false);
       // CL-5: 403 = RSVP closed. Localized closed message (never the
@@ -698,7 +793,7 @@ function RsvpForm({
       if (json.emailStatus) {
         onEmailStatus(json.emailStatus);
       }
-      onSaved(json.invitation);
+      onSaved(json.invitation, json.late === true);
     } catch {
       setLoading(false);
       setNotice(
@@ -757,7 +852,11 @@ function RsvpForm({
               />
               {c.mealPreference}
             </p>
-            {invitation.guests.map((guest) => (
+            {/* LR-6: only the primary guest is a fixed row; every other guest
+                is an editable row below (E1-5), so nobody is listed twice and
+                a meal change there is the one the server keeps (B9 applies
+                the additional rows after mealPreferences). */}
+            {invitation.guests.slice(0, 1).map((guest) => (
               <div className="guest-meal-row" key={guest.id}>
                 <span>{guest.name}</span>
                 <select
@@ -789,12 +888,13 @@ function RsvpForm({
                 {additionalGuests.map((guest, index) => (
                   <div className="guest-meal-row" key={`additional-${index}`}>
                     <input
-                      aria-label={`${c.guestName.replace("{number}", String(invitation.guests.length + index + 1))}`}
+                      aria-label={`${c.guestName.replace("{number}", String(index + 2))}`}
                       className="input"
                       disabled={closed}
                       placeholder={c.guestName.replace(
                         "{number}",
-                        String(invitation.guests.length + index + 1),
+                        // LR-6: the primary guest is Guest 1; these follow it.
+                        String(index + 2),
                       )}
                       value={guest.name}
                       onChange={(event) =>
@@ -951,6 +1051,7 @@ function RsvpSuccessCard({
   isTravelFlow,
   travelHref,
   discoverHref,
+  lateSaved = null,
   onUpdate,
 }: {
   content: WeddingContent;
@@ -961,13 +1062,22 @@ function RsvpSuccessCard({
   isTravelFlow: boolean;
   travelHref: string;
   discoverHref: string;
+  /** LR-4: saved in the late window (a first answer or a change). */
+  lateSaved?: "rsvp" | "change" | null;
   onUpdate: () => void;
 }) {
   const c = copy[language];
   const attending = invitation.rsvp.status === "attending";
-  const heading = attending
-    ? c.successAttendingHeading
-    : c.successDeclinedHeading;
+  // LR-4: a late attending answer is "received", not "confirmed" (the couple
+  // confirms the place); a late decline needs no follow-up line.
+  const lateAttending = attending && lateSaved !== null;
+  const heading = !attending
+    ? c.successDeclinedHeading
+    : lateSaved === "change"
+      ? c.successLateChangeHeading
+      : lateSaved === "rsvp"
+        ? c.successLateHeading
+        : c.successAttendingHeading;
   const attendingEvents = content.events.filter(
     (ev) => invitation.rsvp.eventAttendance[ev.key],
   );
@@ -993,9 +1103,16 @@ function RsvpSuccessCard({
         >
           {heading}
         </h3>
-        {attending ? (
+        {attending && !lateAttending ? (
           <p className="muted" style={{ marginTop: 10 }}>
             {c.successAttendingSub}
+          </p>
+        ) : null}
+        {/* LR-4: received late; the couple will confirm. */}
+        {lateAttending ? (
+          <p className="late-rsvp-saved">
+            <Clock size={15} aria-hidden="true" />
+            {lateSaved === "change" ? c.lateChangeReceived : c.lateRsvpReceived}
           </p>
         ) : null}
       </div>

@@ -2,6 +2,7 @@
 
 import {
   CalendarDays,
+  Clock,
   MapPin,
   Send,
   Users,
@@ -20,6 +21,7 @@ import { EmailOtpGate } from "@/components/site/email-otp-gate";
 import { FloatingRsvpButton } from "@/components/site/floating-rsvp-button";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
+import { LateRsvpNotice } from "@/components/site/late-rsvp-notice";
 import { OpeningCover } from "@/components/site/opening-cover";
 import { PhoneCountryInput } from "@/components/site/phone-country-input";
 import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
@@ -33,16 +35,23 @@ import {
   invitationHref,
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
-import { copy, guestCountHintText, rsvpCountdownText, text } from "@/lib/i18n";
-import { getRsvpDaysLeft, hasRsvpContact, isRsvpClosed } from "@/lib/rsvp";
+import {
+  copy,
+  guestCountHintText,
+  lateRsvpText,
+  rsvpCountdownText,
+  text,
+} from "@/lib/i18n";
+import { getRsvpDaysLeft, getRsvpWindow, hasRsvpContact } from "@/lib/rsvp";
 import { useGuestLanguage } from "@/lib/use-guest-language";
-import { useRsvpClosed } from "@/lib/use-rsvp-closed";
+import { useRsvpWindow } from "@/lib/use-rsvp-closed";
 import type {
   EventKey,
   InvitationGroup,
   Language,
   MealPreference,
   PublicInviteType,
+  RsvpWindow,
   WeddingContent,
 } from "@/lib/types";
 
@@ -100,18 +109,29 @@ export function SelfRegisterInvitePage({
   );
   const isTravelFlow = inviteType.flow === "overseas" || inviteType.flow === "family";
 
-  // CL-5: also flips to closed when the deadline passes while the page is open.
-  const deadlinePassed = useRsvpClosed(content.rsvpDeadline);
+  // CL-5 / LR-4: "open", "late" or "closed" for this link, switching while
+  // the page is open (at the deadline, and when late RSVPs end).
+  const liveRsvpWindow = useRsvpWindow(content.rsvpDeadline, content);
   // CL-5: a 403 "closed" answer from the server also switches to closed.
   const [closedByServer, setClosedByServer] = useState(false);
-  const rsvpClosed = deadlinePassed || closedByServer;
+  // LR-4: a switched-off link takes no late registrations (the server refuses
+  // them), so after its deadline it keeps the closed card.
+  const rsvpWindow: RsvpWindow =
+    closedByServer || (liveRsvpWindow === "late" && !inviteType.isEnabled)
+      ? "closed"
+      : liveRsvpWindow;
   const hasContact = hasRsvpContact(content.rsvpContact);
+  // LR-4: set by a registration saved in the late window (success card).
+  const [lateSaved, setLateSaved] = useState(false);
   // CL-7: "Already registered? Open my invitation" on a closed link. Only ever
   // opens an existing invitation; never shows the registration form.
   const [closedLookup, setClosedLookup] = useState<
     "idle" | "checking" | "verify" | "found" | "notFound"
   >("idle");
   const [closedLookupAttempt, setClosedLookupAttempt] = useState(0);
+  // LR-4: the email the lookup just verified, so a guest with no invitation
+  // can go on to a late RSVP without a second code.
+  const [closedLookupEmail, setClosedLookupEmail] = useState("");
 
   // Non-classic opening animations replace the hero "Open Invitation" button
   // with a full-screen cover, and the reveal lands guests on the hero top
@@ -137,6 +157,9 @@ export function SelfRegisterInvitePage({
   function revealForm() {
     setShowRsvpForm(true);
     setRsvpJustSaved(false);
+    // LR-4: one email check at a time — the late RSVP form replaces an open
+    // "Already registered?" lookup.
+    setClosedLookup("idle");
     void resolveExistingSession();
     window.setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -207,8 +230,9 @@ export function SelfRegisterInvitePage({
    * Shows the success card (with a "View my invitation" button) instead of
    * an immediate hard redirect — preserving client nav + music.
    */
-  function openSavedInvitation(invitation: InvitationGroup) {
+  function openSavedInvitation(invitation: InvitationGroup, late: boolean) {
     setSavedInvitation(invitation);
+    setLateSaved(late);
     setRsvpJustSaved(true);
     setShowRsvpForm(false);
     if (inviteType.flow === "overseas" || inviteType.flow === "family") {
@@ -253,6 +277,8 @@ export function SelfRegisterInvitePage({
 
   async function startClosedLookup() {
     setClosedLookup("checking");
+    // LR-4: one email check at a time — the lookup replaces a late RSVP form.
+    setShowRsvpForm(false);
     window.setTimeout(() => {
       document
         .getElementById("closed-lookup")
@@ -263,10 +289,23 @@ export function SelfRegisterInvitePage({
     setClosedLookup("verify");
   }
 
-  async function finishClosedLookup() {
+  async function finishClosedLookup(email: string) {
     setClosedLookup("checking");
     if (await openRegisteredInvitation()) return;
+    setClosedLookupEmail(email);
     setClosedLookup("notFound");
+  }
+
+  // LR-4: the lookup verified an email with no invitation. In the late window
+  // that guest can register straight away with it (no second code).
+  function startLateRegistration() {
+    setClosedLookup("idle");
+    setVerifiedEmail(closedLookupEmail);
+    setRsvpJustSaved(false);
+    setShowRsvpForm(true);
+    window.setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
   }
 
   function retryClosedLookup() {
@@ -290,6 +329,80 @@ export function SelfRegisterInvitePage({
     if (!savedInvitation) return;
     router.push(`/invite/${encodeURIComponent(savedInvitation.code)}` as Route);
   }
+
+  // LR-4: the late card's sentence, e.g. "Missed the date? You can still send
+  // a late RSVP until 3 November 2026, or get in touch with us:".
+  const lateReachOut = lateRsvpText(
+    hasContact ? c.lateReachOutPublic : c.lateReachOutPublicNoContact,
+    language,
+    content.lateRsvp?.until,
+    content.timezone,
+  );
+
+  // CL-7: the "Already registered?" lookup, under the closed card and LR-4's
+  // late card. In the late window an email without an invitation is offered
+  // the late RSVP instead of "new registrations are no longer possible".
+  const closedLookupPanel =
+    closedLookup !== "idle" ? (
+      <div id="closed-lookup" style={{ marginTop: 24, maxWidth: 620 }}>
+        {closedLookup === "verify" ? (
+          <EmailOtpGate
+            autoVerifySession={false}
+            intro={c.closedLookupIntro}
+            key={closedLookupAttempt}
+            language={language}
+            onVerified={(email) => void finishClosedLookup(email)}
+            title={c.closedLookupTitle}
+          />
+        ) : closedLookup === "notFound" ? (
+          <div className="invite-panel">
+            <p className="eyebrow">{c.closedLookupTitle}</p>
+            <p className="muted" style={{ marginTop: 12 }}>
+              {rsvpWindow === "late"
+                ? c.lateLookupNotFound
+                : c.closedLookupNotFound}
+            </p>
+            {rsvpWindow === "late" ? (
+              <div className="rsvp-actions" style={{ marginTop: 18 }}>
+                <button
+                  className="button button-brown"
+                  type="button"
+                  onClick={startLateRegistration}
+                >
+                  <Clock size={18} />
+                  {c.sendLateRsvp}
+                </button>
+                <button
+                  className="button button-muted"
+                  type="button"
+                  onClick={retryClosedLookup}
+                >
+                  {c.tryAnotherEmail}
+                </button>
+              </div>
+            ) : (
+              <button
+                className="button button-muted"
+                type="button"
+                onClick={retryClosedLookup}
+                style={{ marginTop: 18 }}
+              >
+                {c.tryAnotherEmail}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="invite-panel">
+            <p className="eyebrow">{c.closedLookupTitle}</p>
+            <h3 className="serif" style={{ fontSize: "2rem", marginTop: 10 }}>
+              {closedLookup === "found"
+                ? c.openingPersonalInvite
+                : c.checkingExistingRsvp}
+            </h3>
+          </div>
+        )}
+      </div>
+    ) : null;
 
   useEffect(() => {
     // E1-3: run the same resolve-invite check that revealForm() runs, so a returning guest
@@ -324,8 +437,11 @@ export function SelfRegisterInvitePage({
         language={language}
         travelHref={currentTravelHref}
       />
-      {/* CL-6: no floating RSVP shortcut once RSVP is closed. */}
-      {hasOpenedInvitation && !rsvpClosed ? <FloatingRsvpButton /> : null}
+      {/* CL-6: no floating RSVP shortcut once RSVP is closed (LR-4: it
+          stays while late RSVPs are open). */}
+      {hasOpenedInvitation && rsvpWindow !== "closed" ? (
+        <FloatingRsvpButton />
+      ) : null}
       <RegisterBackgroundMusic src={content.musicUrl} />
 
       {useCover && !hasOpenedInvitation ? (
@@ -472,7 +588,7 @@ export function SelfRegisterInvitePage({
       <section className="section" id="rsvp">
         <div className="page-shell">
           {/* E1-4: show a closed notice when the invite type is disabled */}
-          {rsvpClosed ? (
+          {rsvpWindow === "closed" ? (
             <>
               <div className="rsvp-callout">
                 <div>
@@ -510,50 +626,7 @@ export function SelfRegisterInvitePage({
                 </div>
               </div>
 
-              {closedLookup !== "idle" ? (
-                <div
-                  id="closed-lookup"
-                  style={{ marginTop: 24, maxWidth: 620 }}
-                >
-                  {closedLookup === "verify" ? (
-                    <EmailOtpGate
-                      autoVerifySession={false}
-                      intro={c.closedLookupIntro}
-                      key={closedLookupAttempt}
-                      language={language}
-                      onVerified={() => void finishClosedLookup()}
-                      title={c.closedLookupTitle}
-                    />
-                  ) : closedLookup === "notFound" ? (
-                    <div className="invite-panel">
-                      <p className="eyebrow">{c.closedLookupTitle}</p>
-                      <p className="muted" style={{ marginTop: 12 }}>
-                        {c.closedLookupNotFound}
-                      </p>
-                      <button
-                        className="button button-muted"
-                        type="button"
-                        onClick={retryClosedLookup}
-                        style={{ marginTop: 18 }}
-                      >
-                        {c.tryAnotherEmail}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="invite-panel">
-                      <p className="eyebrow">{c.closedLookupTitle}</p>
-                      <h3
-                        className="serif"
-                        style={{ fontSize: "2rem", marginTop: 10 }}
-                      >
-                        {closedLookup === "found"
-                          ? c.openingPersonalInvite
-                          : c.checkingExistingRsvp}
-                      </h3>
-                    </div>
-                  )}
-                </div>
-              ) : null}
+              {closedLookupPanel}
             </>
           ) : !inviteType.isEnabled ? (
             /* Link switched off while RSVP is still open: its original card.
@@ -583,7 +656,55 @@ export function SelfRegisterInvitePage({
             <>
               {/* Hide the "Ready to confirm?" callout once the RSVP is
                   confirmed — the success card below replaces it. */}
-              {!rsvpJustSaved ? (
+              {!rsvpJustSaved && rsvpWindow === "late" ? (
+                /* LR-4: late window — the closed card with a gold "Send a
+                   late RSVP" first. It runs the same flow as "Confirm
+                   Attendance" (existing session -> own invite; else email
+                   check -> registration form). */
+                <>
+                  <div className="rsvp-callout">
+                    <div>
+                      <p className="eyebrow">{c.rsvp}</p>
+                      <h2
+                        className="serif"
+                        style={{
+                          fontSize: "clamp(2.2rem, 6vw, 5rem)",
+                          lineHeight: 0.95,
+                        }}
+                      >
+                        {c.rsvpClosed}
+                      </h2>
+                      <p className="muted" style={{ marginTop: 14 }}>
+                        {lateReachOut}
+                      </p>
+                    </div>
+                    <div className="rsvp-actions">
+                      <button
+                        className="button button-brown"
+                        type="button"
+                        onClick={revealForm}
+                      >
+                        <Clock size={18} />
+                        {c.sendLateRsvp}
+                      </button>
+                      <RsvpContactLinks
+                        contact={content.rsvpContact}
+                        language={language}
+                      />
+                      {closedLookup === "idle" ? (
+                        <button
+                          className="button button-muted"
+                          type="button"
+                          onClick={() => void startClosedLookup()}
+                        >
+                          {c.alreadyRegisteredOpen}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {closedLookupPanel}
+                </>
+              ) : !rsvpJustSaved ? (
                 <div className="rsvp-callout">
                   <div>
                     <p className="eyebrow">{c.registerRsvp}</p>
@@ -632,6 +753,7 @@ export function SelfRegisterInvitePage({
                     isTravelFlow={isTravelFlow}
                     travelHref={currentTravelHref}
                     discoverHref={currentDiscoverHref}
+                    late={lateSaved}
                     onViewInvite={navigateToPersonalInvite}
                   />
                 </div>
@@ -657,6 +779,14 @@ export function SelfRegisterInvitePage({
                     {/* Heading lives in the OTP box on the right; keep only the
                         eyebrow + guest-count note here to avoid duplication. */}
                     <p className="eyebrow">{c.registerRsvp}</p>
+                    {/* LR-4: "Late RSVP · Our RSVP date was …" */}
+                    {rsvpWindow === "late" ? (
+                      <LateRsvpNotice
+                        deadlineIso={content.rsvpDeadline}
+                        language={language}
+                        timeZone={content.timezone}
+                      />
+                    ) : null}
                     <p className="muted" style={{ marginTop: 14 }}>
                       {guestCountHintText(language, inviteType.maxGuests)}
                     </p>
@@ -714,7 +844,8 @@ function SelfRegisterForm({
   /** CL-5: called when the server answers 403 (RSVP closed). */
   onClosed: () => void;
   onEmailStatus: (status: "sent" | "failed" | "skipped") => void;
-  onSaved: (invitation: InvitationGroup) => void;
+  /** LR-4: `late` = the server saved it in the late window. */
+  onSaved: (invitation: InvitationGroup, late: boolean) => void;
 }) {
   const c = copy[language];
   const [name, setName] = useState("");
@@ -732,7 +863,8 @@ function SelfRegisterForm({
   const [loading, setLoading] = useState(false);
   // CL-5: checked on every render, so a deadline that passes on the guest's
   // own clock while the form is open is noticed on the next keystroke.
-  const closed = isRsvpClosed(content.rsvpDeadline);
+  // LR-4: only a "closed" window locks it; the late window keeps it usable.
+  const closed = getRsvpWindow(content.rsvpDeadline, content) === "closed";
   const maxGuests = Math.max(1, inviteType.maxGuests || 1);
   const isAttending = status === "attending";
   const needsEveryGuestName =
@@ -808,6 +940,7 @@ function SelfRegisterForm({
         invitation?: InvitationGroup;
         error?: string;
         emailStatus?: "sent" | "failed" | "skipped";
+        late?: boolean;
       };
       setLoading(false);
       // CL-5: 403 = RSVP closed. Localized closed message (never the
@@ -835,7 +968,7 @@ function SelfRegisterForm({
           json.invitation.code,
         );
       }
-      onSaved(json.invitation);
+      onSaved(json.invitation, json.late === true);
     } catch {
       setLoading(false);
       setNotice(
@@ -1088,6 +1221,7 @@ function SelfRegisterSuccessCard({
   isTravelFlow,
   travelHref,
   discoverHref,
+  late = false,
   onViewInvite,
 }: {
   content: WeddingContent;
@@ -1098,13 +1232,20 @@ function SelfRegisterSuccessCard({
   isTravelFlow: boolean;
   travelHref: string;
   discoverHref: string;
+  /** LR-4: registered in the late window. */
+  late?: boolean;
   onViewInvite: () => void;
 }) {
   const c = copy[language];
   const attending = invitation.rsvp.status === "attending";
-  const heading = attending
-    ? c.successAttendingHeading
-    : c.successDeclinedHeading;
+  // LR-4: a late attending registration is "received", not "confirmed"
+  // (the couple confirms the place); a late decline needs no follow-up line.
+  const lateAttending = attending && late === true;
+  const heading = !attending
+    ? c.successDeclinedHeading
+    : lateAttending
+      ? c.successLateHeading
+      : c.successAttendingHeading;
   const attendingEvents = content.events.filter(
     (ev) => invitation.rsvp.eventAttendance[ev.key],
   );
@@ -1130,9 +1271,16 @@ function SelfRegisterSuccessCard({
         >
           {heading}
         </h3>
-        {attending ? (
+        {attending && !lateAttending ? (
           <p className="muted" style={{ marginTop: 10 }}>
             {c.successAttendingSub}
+          </p>
+        ) : null}
+        {/* LR-4: received late; the couple will confirm. */}
+        {lateAttending ? (
+          <p className="late-rsvp-saved">
+            <Clock size={15} aria-hidden="true" />
+            {c.lateRsvpReceived}
           </p>
         ) : null}
       </div>

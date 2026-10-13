@@ -1,3 +1,4 @@
+import { formatRsvpDeadlineDate, normalizeDeadlineIso } from "@/lib/rsvp";
 import type { Language, LocalizedString } from "@/lib/types";
 
 export const languages: { code: Language; label: string }[] = [
@@ -151,6 +152,34 @@ export const copy = {
     closedLookupNotFound:
       "We couldn't find an invitation for this email. RSVP is now closed, so new registrations are no longer possible.",
     tryAnotherEmail: "Try another email",
+    // LR-4: late RSVPs (deadline passed, late window open). {until} is
+    // lateUntil below, or nothing when late RSVPs have no end date.
+    sendLateRsvp: "Send a late RSVP",
+    updateMyRsvp: "Update my RSVP",
+    lateUntil: " until {date}",
+    lateReachOutPending:
+      "You can still send a late RSVP{until}, or get in touch with us:",
+    lateReachOutPendingNoContact: "You can still send a late RSVP{until}.",
+    lateReachOutResponded:
+      "Need to change anything? You can still update your RSVP{until}, or get in touch with us:",
+    lateReachOutRespondedNoContact:
+      "Need to change anything? You can still update your RSVP{until}.",
+    lateReachOutPublic:
+      "Missed the date? You can still send a late RSVP{until}, or get in touch with us:",
+    lateReachOutPublicNoContact:
+      "Missed the date? You can still send a late RSVP{until}.",
+    lateRsvpLabel: "Late RSVP",
+    lateRsvpNotice: "Our RSVP date was {date}. We'll confirm your place with you.",
+    lateChangeLabel: "Late change",
+    lateChangeNotice: "Our RSVP date was {date}. We'll confirm the change with you.",
+    // LR-4: the success card for a late attending answer (the heading says
+    // "received", not "confirmed": the couple confirms the place).
+    successLateHeading: "Thank you — we've received your late RSVP.",
+    successLateChangeHeading: "Thank you — we've received your change.",
+    lateRsvpReceived: "We'll be in touch to confirm your place.",
+    lateChangeReceived: "We'll be in touch to confirm the change.",
+    lateLookupNotFound:
+      "We couldn't find an invitation for this email. You can still send a late RSVP with it.",
     // Success states
     successAttendingHeading: "Thank you — your RSVP is confirmed.",
     successAttendingSub: "See you on 12 December 2026",
@@ -300,6 +329,36 @@ export const copy = {
     closedLookupNotFound:
       "Kami tidak menemukan undangan untuk email ini. RSVP telah ditutup, sehingga pendaftaran baru tidak dapat dilakukan lagi.",
     tryAnotherEmail: "Coba email lain",
+    // LR-4: late RSVPs — ID NEEDS REVIEW by Edward. {until} is lateUntil
+    // below, or nothing when late RSVPs have no end date.
+    sendLateRsvp: "Kirim RSVP terlambat",
+    updateMyRsvp: "Perbarui RSVP saya",
+    lateUntil: " hingga {date}",
+    lateReachOutPending:
+      "Anda masih dapat mengirim RSVP terlambat{until}, atau hubungi kami:",
+    lateReachOutPendingNoContact:
+      "Anda masih dapat mengirim RSVP terlambat{until}.",
+    lateReachOutResponded:
+      "Ada yang perlu diubah? Anda masih dapat memperbarui RSVP{until}, atau hubungi kami:",
+    lateReachOutRespondedNoContact:
+      "Ada yang perlu diubah? Anda masih dapat memperbarui RSVP{until}.",
+    lateReachOutPublic:
+      "Terlewat batas waktu? Anda masih dapat mengirim RSVP terlambat{until}, atau hubungi kami:",
+    lateReachOutPublicNoContact:
+      "Terlewat batas waktu? Anda masih dapat mengirim RSVP terlambat{until}.",
+    lateRsvpLabel: "RSVP terlambat",
+    lateRsvpNotice:
+      "Batas waktu RSVP kami adalah {date}. Kami akan menghubungi Anda untuk memastikan tempat Anda.",
+    lateChangeLabel: "Perubahan terlambat",
+    lateChangeNotice:
+      "Batas waktu RSVP kami adalah {date}. Kami akan menghubungi Anda untuk memastikan perubahan ini.",
+    successLateHeading: "Terima kasih — RSVP terlambat Anda sudah kami terima.",
+    successLateChangeHeading: "Terima kasih — perubahan Anda sudah kami terima.",
+    lateRsvpReceived: "Kami akan menghubungi Anda untuk memastikan tempat Anda.",
+    lateChangeReceived:
+      "Kami akan menghubungi Anda untuk memastikan perubahan ini.",
+    lateLookupNotFound:
+      "Kami tidak menemukan undangan untuk email ini. Anda masih dapat mengirim RSVP terlambat dengan email ini.",
     // Success states — ID NEEDS REVIEW by Edward
     successAttendingHeading: "Terima kasih — RSVP Anda telah dikonfirmasi.",
     successAttendingSub: "Sampai jumpa pada 12 Desember 2026",
@@ -316,6 +375,25 @@ export function guestCountHintText(language: Language, count: number) {
   const c = copy[language];
   if (count === 1) return c.guestCountHintOne;
   return c.guestCountHint.replace("{count}", String(count));
+}
+
+// LR-4: fills {until} in a late-RSVP template with " until 3 November 2026"
+// (" hingga 3 November 2026"), or with nothing when late RSVPs have no end
+// date (an invalid date counts as none, like isLateRsvpOpen).
+export function lateRsvpText(
+  template: string,
+  language: Language,
+  until: string | undefined,
+  timeZone?: string,
+) {
+  const untilIso = normalizeDeadlineIso(until);
+  const untilText = untilIso
+    ? copy[language].lateUntil.replace(
+        "{date}",
+        formatRsvpDeadlineDate(untilIso, timeZone, language),
+      )
+    : "";
+  return template.replace("{until}", untilText);
 }
 
 // CL-8: countdown label for a days-left value from getRsvpDaysLeft (never 0:

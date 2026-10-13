@@ -16,6 +16,9 @@ export const weddingContent: WeddingContent = {
   // CL-3: shown on closed RSVP cards without an admin action. The wa.me
   // short link is kept verbatim (never converted to a phone number).
   rsvpContact: { whatsappUrl: "https://wa.me/message/COSKSKIJH7AHP1" },
+  // LR-1: late RSVPs are accepted after each guest's deadline until 3 Nov
+  // 2026 23:59:59 WIB, without an admin action (switchable in admin).
+  lateRsvp: { enabled: true, until: "2026-11-03T16:59:59.000Z" },
   defaultLanguage: "en",
   openingText: {
     en: "Together with our families, we invite you to celebrate our wedding.",

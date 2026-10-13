@@ -9,7 +9,7 @@ import { getGuestAuthSession } from "@/lib/guest-auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   getEffectiveRsvpDeadline,
-  isRsvpClosed,
+  getRsvpWindow,
   validateRsvpSubmission,
 } from "@/lib/rsvp";
 import { sendRsvpConfirmationEmail } from "@/lib/rsvp-confirmation-email";
@@ -37,13 +37,17 @@ export async function POST(request: Request) {
     // fall back to the main deadline, so they get the same 403 as before when
     // it has passed, and the existing "Invitation not found" 400 otherwise.
     const targetInvitation = await getInvitationByCode(payload.code);
-    if (
-      isRsvpClosed(
-        getEffectiveRsvpDeadline(content, { invitation: targetInvitation }),
-      )
-    ) {
+    // LR-2: after that deadline the late window ("late") still saves, for
+    // every guest: never replied, attending or declined. Only "closed" (late
+    // RSVPs off or ended) answers 403.
+    const rsvpWindow = getRsvpWindow(
+      getEffectiveRsvpDeadline(content, { invitation: targetInvitation }),
+      content,
+    );
+    if (rsvpWindow === "closed") {
       return NextResponse.json({ error: "RSVP editing is closed." }, { status: 403 });
     }
+    const late = rsvpWindow === "late";
 
     const guestAuth = await getGuestAuthSession();
     if (!guestAuth?.email) {
@@ -59,7 +63,11 @@ export async function POST(request: Request) {
 
     // D1: email runs AFTER the successful save and can never throw past itself.
     // emailStatus is included in the response so the client can notify the guest.
-    const emailResult = await sendRsvpConfirmationEmail({ content, invitation }).catch(
+    const emailResult = await sendRsvpConfirmationEmail({
+      content,
+      invitation,
+      late,
+    }).catch(
       (err) => {
         console.error(
           `[rsvp] Unexpected error sending confirmation email for ${invitation.code}:`,
@@ -81,6 +89,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       invitation: { ...safeInvitation, emailClaimed: Boolean(invitation.email) },
       emailStatus: emailResult.status,
+      // LR-4: lets the success card add its late sentence.
+      late,
     });
   } catch (error) {
     return NextResponse.json(
