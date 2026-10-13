@@ -152,22 +152,25 @@ export const copy = {
     closedLookupNotFound:
       "We couldn't find an invitation for this email. RSVP is now closed, so new registrations are no longer possible.",
     tryAnotherEmail: "Try another email",
-    // LR-4: late RSVPs (deadline passed, late window open). {until} is
-    // lateUntil below, or nothing when late RSVPs have no end date.
+    // LR-4: late RSVPs (deadline passed, late window open). LR-7: the
+    // owner asked not to show the late end date to guests (the window still
+    // ends per admin Content); instead guests are asked to tell Edward or
+    // Jessica on Telegram or WhatsApp. {until} (lateUntil) is still supported.
     sendLateRsvp: "Send a late RSVP",
     updateMyRsvp: "Update my RSVP",
     lateUntil: " until {date}",
     lateReachOutPending:
-      "You can still send a late RSVP{until}, or get in touch with us:",
-    lateReachOutPendingNoContact: "You can still send a late RSVP{until}.",
+      "You can still send a late RSVP. If you do, we'd appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
+    lateReachOutPendingNoContact:
+      "You can still send a late RSVP. If you do, we'd appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
     lateReachOutResponded:
-      "Need to change anything? You can still update your RSVP{until}, or get in touch with us:",
+      "Need to change anything? You can still update your RSVP. If you do, we'd appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
     lateReachOutRespondedNoContact:
-      "Need to change anything? You can still update your RSVP{until}.",
+      "Need to change anything? You can still update your RSVP. If you do, we'd appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
     lateReachOutPublic:
-      "Missed the date? You can still send a late RSVP{until}, or get in touch with us:",
+      "Missed the date? You can still send a late RSVP. If you do, we'd appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
     lateReachOutPublicNoContact:
-      "Missed the date? You can still send a late RSVP{until}.",
+      "Missed the date? You can still send a late RSVP. If you do, we'd appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
     lateRsvpLabel: "Late RSVP",
     lateRsvpNotice: "Our RSVP date was {date}. We'll confirm your place with you.",
     lateChangeLabel: "Late change",
@@ -176,8 +179,10 @@ export const copy = {
     // "received", not "confirmed": the couple confirms the place).
     successLateHeading: "Thank you — we've received your late RSVP.",
     successLateChangeHeading: "Thank you — we've received your change.",
-    lateRsvpReceived: "We'll be in touch to confirm your place.",
-    lateChangeReceived: "We'll be in touch to confirm the change.",
+    lateRsvpReceived:
+      "We'll be in touch to confirm your place. Please also give Edward or Jessica a quick heads-up on Telegram or WhatsApp.",
+    lateChangeReceived:
+      "We'll be in touch to confirm the change. Please also give Edward or Jessica a quick heads-up on Telegram or WhatsApp.",
     lateLookupNotFound:
       "We couldn't find an invitation for this email. You can still send a late RSVP with it.",
     // Success states
@@ -335,17 +340,17 @@ export const copy = {
     updateMyRsvp: "Perbarui RSVP saya",
     lateUntil: " hingga {date}",
     lateReachOutPending:
-      "Anda masih dapat mengirim RSVP terlambat{until}, atau hubungi kami:",
+      "Anda masih dapat mengirim RSVP terlambat. Jika Anda mengirimnya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     lateReachOutPendingNoContact:
-      "Anda masih dapat mengirim RSVP terlambat{until}.",
+      "Anda masih dapat mengirim RSVP terlambat. Jika Anda mengirimnya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     lateReachOutResponded:
-      "Ada yang perlu diubah? Anda masih dapat memperbarui RSVP{until}, atau hubungi kami:",
+      "Ada yang perlu diubah? Anda masih dapat memperbarui RSVP. Jika Anda memperbaruinya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     lateReachOutRespondedNoContact:
-      "Ada yang perlu diubah? Anda masih dapat memperbarui RSVP{until}.",
+      "Ada yang perlu diubah? Anda masih dapat memperbarui RSVP. Jika Anda memperbaruinya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     lateReachOutPublic:
-      "Terlewat batas waktu? Anda masih dapat mengirim RSVP terlambat{until}, atau hubungi kami:",
+      "Terlewat batas waktu? Anda masih dapat mengirim RSVP terlambat. Jika Anda mengirimnya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     lateReachOutPublicNoContact:
-      "Terlewat batas waktu? Anda masih dapat mengirim RSVP terlambat{until}.",
+      "Terlewat batas waktu? Anda masih dapat mengirim RSVP terlambat. Jika Anda mengirimnya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     lateRsvpLabel: "RSVP terlambat",
     lateRsvpNotice:
       "Batas waktu RSVP kami adalah {date}. Kami akan menghubungi Anda untuk memastikan tempat Anda.",
@@ -354,9 +359,10 @@ export const copy = {
       "Batas waktu RSVP kami adalah {date}. Kami akan menghubungi Anda untuk memastikan perubahan ini.",
     successLateHeading: "Terima kasih — RSVP terlambat Anda sudah kami terima.",
     successLateChangeHeading: "Terima kasih — perubahan Anda sudah kami terima.",
-    lateRsvpReceived: "Kami akan menghubungi Anda untuk memastikan tempat Anda.",
+    lateRsvpReceived:
+      "Kami akan menghubungi Anda untuk memastikan tempat Anda. Mohon juga kabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     lateChangeReceived:
-      "Kami akan menghubungi Anda untuk memastikan perubahan ini.",
+      "Kami akan menghubungi Anda untuk memastikan perubahan ini. Mohon juga kabari Edward atau Jessica melalui Telegram atau WhatsApp.",
     lateLookupNotFound:
       "Kami tidak menemukan undangan untuk email ini. Anda masih dapat mengirim RSVP terlambat dengan email ini.",
     // Success states — ID NEEDS REVIEW by Edward

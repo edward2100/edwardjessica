@@ -155,7 +155,7 @@ describe("server-rendered late window (LR-4)", () => {
       expect(html).toContain('<p class="eyebrow">RSVP</p>');
       expect(html).toContain("RSVP is now closed");
       expect(html).toContain(
-        "Missed the date? You can still send a late RSVP until 3 November 2026, or get in touch with us:",
+        "Missed the date? You can still send a late RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
       );
       expect(html).toMatch(LATE_BUTTON);
       const late = html.indexOf("Send a late RSVP");
@@ -168,13 +168,15 @@ describe("server-rendered late window (LR-4)", () => {
       expect(html).not.toContain("Confirm Attendance");
       expect(html).not.toContain("Ready to confirm?");
       expect(html).not.toMatch(/days? left/);
+      // LR-7: the late end date is not shown to guests.
+      expect(html).not.toContain("3 November");
     });
 
     it("Indonesian copy", () => {
       const html = rsvpSection(publicPage(guestContent(), generic, "id"));
       expect(html).toContain("RSVP telah ditutup");
       expect(html).toContain(
-        "Terlewat batas waktu? Anda masih dapat mengirim RSVP terlambat hingga 3 November 2026, atau hubungi kami:",
+        "Terlewat batas waktu? Anda masih dapat mengirim RSVP terlambat. Jika Anda mengirimnya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
       );
       expect(html).toMatch(LATE_BUTTON_ID);
       expect(html).toContain("Hubungi kami via WhatsApp");
@@ -183,11 +185,11 @@ describe("server-rendered late window (LR-4)", () => {
 
     it("no end date, and no contact set", () => {
       expect(rsvpSection(publicPage(guestContent({ lateRsvp: { enabled: true } })))).toContain(
-        "Missed the date? You can still send a late RSVP, or get in touch with us:",
+        "Missed the date? You can still send a late RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
       );
       const noContact = rsvpSection(publicPage(guestContent({ rsvpContact: {} })));
       expect(noContact).toContain(
-        "Missed the date? You can still send a late RSVP until 3 November 2026.",
+        "Missed the date? You can still send a late RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
       );
       expect(noContact).not.toContain("get in touch");
       expect(noContact).not.toContain("wa.me");
@@ -209,7 +211,7 @@ describe("server-rendered late window (LR-4)", () => {
       expect(html).toContain("RSVP is now closed");
       expect(html).toContain("We didn&#x27;t receive an RSVP from you before the deadline.");
       expect(html).toContain(
-        "You can still send a late RSVP until 3 November 2026, or get in touch with us:",
+        "You can still send a late RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
       );
       expect(html).toMatch(LATE_BUTTON);
       expect(html.indexOf("Send a late RSVP")).toBeLessThan(
@@ -229,7 +231,7 @@ describe("server-rendered late window (LR-4)", () => {
         '<a class="button button-brown" href="/travel-accommodation?code=EJ26-BRILIAN">Submit your travel plans →</a>',
       );
       expect(html).toContain(
-        "Need to change anything? You can still update your RSVP until 3 November 2026, or get in touch with us:",
+        "Need to change anything? You can still update your RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
       );
       expect(html).toMatch(
         /<button class="button button-gold-outline" type="button"><svg[^>]*lucide-clock[^>]*>[\s\S]*?<\/svg>Update my RSVP<\/button>/,
@@ -250,7 +252,7 @@ describe("server-rendered late window (LR-4)", () => {
       const html = rsvpSection(invitePage(seed("EJ26-X7K92")));
       expect(html).toContain("You let us know you can&#x27;t make it — we&#x27;ll miss you.");
       expect(html).toContain(
-        "Need to change anything? You can still update your RSVP until 3 November 2026, or get in touch with us:",
+        "Need to change anything? You can still update your RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
       );
       expect(html).toContain('class="button button-gold-outline"');
       expect(html).not.toContain("button-brown");
@@ -259,22 +261,22 @@ describe("server-rendered late window (LR-4)", () => {
     it("Indonesian copy, no end date and no contact", () => {
       const pending = rsvpSection(invitePage(seed("EJ26-HARDWIN"), guestContent(), "id"));
       expect(pending).toContain(
-        "Anda masih dapat mengirim RSVP terlambat hingga 3 November 2026, atau hubungi kami:",
+        "Anda masih dapat mengirim RSVP terlambat. Jika Anda mengirimnya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
       );
       expect(pending).toMatch(LATE_BUTTON_ID);
       const attending = rsvpSection(invitePage(seed("EJ26-BRILIAN"), guestContent(), "id"));
       expect(attending).toContain(
-        "Ada yang perlu diubah? Anda masih dapat memperbarui RSVP hingga 3 November 2026, atau hubungi kami:",
+        "Ada yang perlu diubah? Anda masih dapat memperbarui RSVP. Jika Anda memperbaruinya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
       );
       expect(attending).toContain("Perbarui RSVP saya");
       expect(
         rsvpSection(invitePage(seed("EJ26-HARDWIN"), guestContent({ lateRsvp: { enabled: true } }))),
-      ).toContain("You can still send a late RSVP, or get in touch with us:");
+      ).toContain("You can still send a late RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.");
       const noContact = rsvpSection(
         invitePage(seed("EJ26-BRILIAN"), guestContent({ rsvpContact: {} })),
       );
       expect(noContact).toContain(
-        "Need to change anything? You can still update your RSVP until 3 November 2026.",
+        "Need to change anything? You can still update your RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too.",
       );
       expect(noContact).not.toContain("Please contact us directly for any changes.");
     });
@@ -340,11 +342,11 @@ describe("server-rendered late window (LR-4)", () => {
       );
     });
 
-    it("declined: can still update the RSVP until the end date", () => {
+    it("declined: can still update the RSVP, and is asked to tell Edward or Jessica", () => {
       const form = travelSection(travelPage(declinedBrilian()));
       expect(form).toContain("No travel details needed");
       expect(form).toContain(
-        'If your plans have changed, you can still update your RSVP until 3 November 2026. <a class="travel-inline-link" href="/invite/EJ26-BRILIAN#rsvp">Update my RSVP</a>',
+        'If your plans have changed, you can still update your RSVP. If you do, we&#x27;d appreciate a quick message to Edward or Jessica on Telegram or WhatsApp too. <a class="travel-inline-link" href="/invite/EJ26-BRILIAN#rsvp">Update my RSVP</a>',
       );
       expect(form).not.toContain("please contact us directly");
       const id = travelSection(
@@ -359,7 +361,7 @@ describe("server-rendered late window (LR-4)", () => {
         ),
       );
       expect(id).toContain(
-        "Jika rencana Anda berubah, Anda masih dapat memperbarui RSVP hingga 3 November 2026.",
+        "Jika rencana Anda berubah, Anda masih dapat memperbarui RSVP. Jika Anda memperbaruinya, kami akan sangat menghargai jika Anda juga mengabari Edward atau Jessica melalui Telegram atau WhatsApp.",
       );
       expect(id).toContain(">Perbarui RSVP saya</a>");
     });
@@ -583,6 +585,9 @@ describe("late RSVP in the browser (LR-4)", () => {
     });
     expect(rsvpText()).toContain("Thank you — we've received your late RSVP.");
     expect(rsvpText()).toContain("We'll be in touch to confirm your place.");
+    expect(rsvpText()).toContain(
+      "Please also give Edward or Jessica a quick heads-up on Telegram or WhatsApp.",
+    );
     expect(rsvpText()).not.toContain("your RSVP is confirmed");
     expect(rsvpText()).not.toContain("Send a late RSVP");
   });
