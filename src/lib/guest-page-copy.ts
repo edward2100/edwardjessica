@@ -41,6 +41,8 @@ type TravelPageCopy = {
   closedCopy: string;
   /** CL-4: declined guests after the deadline (no "update your RSVP"). */
   declinedClosedCopy: string;
+  /** LR-4: declined guests in the late window; {until} as in lateRsvpText. */
+  lateDeclinedCopy: string;
   rsvpHere: string;
   invalidCode: string;
   arrivalField: string;
@@ -134,6 +136,8 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
       "The RSVP deadline has passed, so travel details can only be submitted by guests who have confirmed their attendance. If you'd still like to join us, please contact us directly.",
     declinedClosedCopy:
       "Your RSVP is marked as not attending, so no travel details are needed. If your plans have changed, please contact us directly.",
+    lateDeclinedCopy:
+      "Your RSVP is marked as not attending, so no travel details are needed. If your plans have changed, you can still update your RSVP{until}.",
     rsvpHere: "RSVP here",
     invalidCode:
       "We could not find this overseas invitation code. Please reopen this page from your RSVP confirmation or invite link.",
@@ -204,6 +208,9 @@ export const travelPageCopy: Record<Language, TravelPageCopy> = {
       "Batas waktu RSVP telah berakhir, sehingga detail perjalanan hanya dapat dikirim oleh tamu yang telah mengonfirmasi kehadiran. Jika Anda masih ingin hadir, silakan hubungi kami langsung.",
     declinedClosedCopy:
       "RSVP Anda tercatat tidak hadir, jadi detail perjalanan tidak diperlukan. Jika rencana Anda berubah, silakan hubungi kami langsung.",
+    // LR-4: late-window copy — ID NEEDS REVIEW by Edward
+    lateDeclinedCopy:
+      "RSVP Anda tercatat tidak hadir, jadi detail perjalanan tidak diperlukan. Jika rencana Anda berubah, Anda masih dapat memperbarui RSVP{until}.",
     rsvpHere: "RSVP di sini",
     invalidCode:
       "Kami tidak dapat menemukan kode undangan overseas ini. Mohon buka halaman ini dari konfirmasi RSVP atau tautan undangan Anda.",

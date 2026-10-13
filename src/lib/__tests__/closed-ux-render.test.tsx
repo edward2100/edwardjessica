@@ -16,6 +16,9 @@ import { weddingContent } from "@/lib/wedding-content";
 // HTML guests receive first).
 const PAST = "2026-09-30T17:00:00.000Z";
 const OWNER_WHATSAPP = "https://wa.me/message/COSKSKIJH7AHP1";
+// LR-5: these tests cover the fully closed card, so late RSVPs are off (the
+// code default accepts them until 3 Nov 2026).
+const LATE_OFF = { enabled: false };
 
 function seed(code: string): InvitationGroup {
   return toGuestInvitation(
@@ -26,7 +29,10 @@ function seed(code: string): InvitationGroup {
 function closedInvite(code: string, rsvpContact?: RsvpContact) {
   return renderToStaticMarkup(
     <InvitePage
-      content={toGuestContent({ ...weddingContent, rsvpContact }, PAST)}
+      content={toGuestContent(
+        { ...weddingContent, rsvpContact, lateRsvp: LATE_OFF },
+        PAST,
+      )}
       invitation={seed(code)}
     />,
   );
@@ -136,7 +142,11 @@ describe("public link RSVP section (CL-7/CL-8)", () => {
     const html = renderWithRouter(
       <SelfRegisterInvitePage
         content={toGuestContent(
-          { ...weddingContent, rsvpContact: { whatsappUrl: OWNER_WHATSAPP } },
+          {
+            ...weddingContent,
+            rsvpContact: { whatsappUrl: OWNER_WHATSAPP },
+            lateRsvp: LATE_OFF,
+          },
           PAST,
         )}
         inviteType={overseasFamilyFriends}
@@ -176,7 +186,11 @@ describe("public link RSVP section (CL-7/CL-8)", () => {
     const html = renderWithRouter(
       <SelfRegisterInvitePage
         content={toGuestContent(
-          { ...weddingContent, rsvpContact: { whatsappUrl: OWNER_WHATSAPP } },
+          {
+            ...weddingContent,
+            rsvpContact: { whatsappUrl: OWNER_WHATSAPP },
+            lateRsvp: LATE_OFF,
+          },
           PAST,
         )}
         inviteType={{ ...overseasFamilyFriends, isEnabled: false }}
@@ -210,7 +224,10 @@ describe("public link RSVP section (CL-7/CL-8)", () => {
 function closedTravel(invitation: InvitationGroup, rsvpContact?: RsvpContact) {
   const html = renderWithRouter(
     <TravelAccommodationPage
-      content={toGuestContent({ ...weddingContent, rsvpContact }, PAST)}
+      content={toGuestContent(
+        { ...weddingContent, rsvpContact, lateRsvp: LATE_OFF },
+        PAST,
+      )}
       flow={invitation.flow}
       invitation={invitation}
       requestedCode={invitation.code}
@@ -225,7 +242,11 @@ function closedTravelPage(
   return renderWithRouter(
     <TravelAccommodationPage
       content={toGuestContent(
-        { ...weddingContent, rsvpContact: { whatsappUrl: OWNER_WHATSAPP } },
+        {
+          ...weddingContent,
+          rsvpContact: { whatsappUrl: OWNER_WHATSAPP },
+          lateRsvp: LATE_OFF,
+        },
         PAST,
       )}
       flow="overseas"

@@ -34,11 +34,14 @@ import { isSupabaseConfigured } from "@/lib/env";
 import { normalizeImageCrop, normalizeImageCrops } from "@/lib/image-crop";
 import {
   buildNameInviteCode,
+  deriveLateResponses,
   ensureEligibleEvents,
   eventKeys,
   generateInviteCode,
   hasAtLeastOneAttendingEvent,
+  latestGuestChanges,
   normalizeDeadlineIso,
+  normalizeLateRsvp,
   normalizeRsvpContact,
 } from "@/lib/rsvp";
 import { sampleHistory, sampleInvitations } from "@/lib/seed";
@@ -171,6 +174,13 @@ function normalizeWeddingContent(
       content.rsvpContact === undefined
         ? normalizeRsvpContact(weddingContent.rsvpContact)
         : normalizeRsvpContact(content.rsvpContact),
+    // LR-1: same rule as rsvpContact: content stored before this key existed
+    // inherits the code default (late RSVPs go live on deploy); a stored
+    // value, including { enabled: false }, is validated and kept.
+    lateRsvp:
+      content.lateRsvp === undefined
+        ? normalizeLateRsvp(weddingContent.lateRsvp)
+        : normalizeLateRsvp(content.lateRsvp),
   };
 }
 
@@ -1696,6 +1706,7 @@ export async function getAdminSnapshot(): Promise<AdminSnapshot> {
   const history = await getHistory();
   const messageLogs = await getAdminMessageLogs();
   const travelPlans = await getTravelPlans();
+  const lateResponses = await getLateResponses(invitations);
 
   // B7: compute distinct invite-open count from events table when Supabase is available
   let distinctOpenCount: number | undefined;
@@ -1722,8 +1733,56 @@ export async function getAdminSnapshot(): Promise<AdminSnapshot> {
     history,
     messageLogs,
     travelPlans,
+    lateResponses,
     stats: calculateStats(invitations, history, distinctOpenCount),
   };
+}
+
+// LR-3: late markers for the admin badges, stats and CSV. The deadline used
+// is the PUBLISHED content's: that is the one guests were held to (the draft
+// may hold an edit nobody has seen yet). A display aid only, so a failing
+// read is logged and shows no markers instead of breaking the admin page.
+async function getLateResponses(
+  invitations: InvitationGroup[],
+): Promise<AdminSnapshot["lateResponses"]> {
+  try {
+    const [published, guestChanges] = await Promise.all([
+      getPublishedContent(),
+      getLatestGuestChanges(),
+    ]);
+    return deriveLateResponses(invitations, published, guestChanges);
+  } catch (error) {
+    console.error(
+      "[getAdminSnapshot] Unable to derive late RSVPs:",
+      error instanceof Error ? error.message : error,
+    );
+    return {};
+  }
+}
+
+// LR-3: latest guest-made change per invitation. Its own query, because the
+// snapshot's history (getHistory) is capped at 100 rows for the Analytics
+// table and would hide older guest changes.
+async function getLatestGuestChanges() {
+  if (isSupabaseConfigured()) {
+    const supabase = createSupabaseServiceClient();
+    if (!supabase) throw new Error("Supabase client unavailable");
+    const { data, error } = await supabase
+      .from("rsvp_history")
+      .select("invitation_group_id,changed_at")
+      .eq("changed_by", "guest")
+      .order("changed_at", { ascending: false })
+      .limit(5000);
+    if (error) throw new Error(error.message);
+    return latestGuestChanges(
+      (data || []).map((row) => ({
+        invitationGroupId: String(row.invitation_group_id),
+        changedBy: "guest" as const,
+        changedAt: String(row.changed_at),
+      })),
+    );
+  }
+  return latestGuestChanges(previewStore().history);
 }
 
 export async function getInvitations(): Promise<InvitationGroup[]> {

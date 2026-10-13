@@ -9,7 +9,7 @@ import { normalizeGuestEmail, setGuestAuthCookie } from "@/lib/guest-auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   getEffectiveRsvpDeadline,
-  isRsvpClosed,
+  getRsvpWindow,
   normalizeInviteCode,
   validateInviteCode,
 } from "@/lib/rsvp";
@@ -71,14 +71,19 @@ export async function POST(request: Request) {
       // own effective deadline, so an admin extension still allows it).
       // After the deadline a claim has no use and would let anyone who knows
       // the code lock the real guest out.
+      // LR-2: the late window counts as open here, so a guest who never
+      // replied can still claim the invite and send a late RSVP; once late
+      // RSVPs are off or ended, nothing is claimed (as before).
       const [content, invitation] = await Promise.all([
         getPublishedContent(),
         getInvitationByCode(normalizedCode),
       ]);
       await ensureInvitationEmailAllowed(normalizedCode, normalizedEmail, {
-        claimIfEmpty: !isRsvpClosed(
-          getEffectiveRsvpDeadline(content, { invitation }),
-        ),
+        claimIfEmpty:
+          getRsvpWindow(
+            getEffectiveRsvpDeadline(content, { invitation }),
+            content,
+          ) !== "closed",
       });
     }
 

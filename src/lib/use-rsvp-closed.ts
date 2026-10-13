@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { isRsvpClosed } from "@/lib/rsvp";
+import { getRsvpWindow, isRsvpClosed } from "@/lib/rsvp";
+import type { RsvpWindow, WeddingContent } from "@/lib/types";
 
 // setTimeout fires immediately for delays above 2^31-1 ms (~24.8 days), so
 // longer waits are done in steps.
@@ -38,4 +39,22 @@ export function useRsvpClosed(deadlineIso: string) {
   }, [closed, deadlineIso, tick]);
 
   return closed;
+}
+
+/**
+ * LR-4: the guest's RSVP window (getRsvpWindow), live like useRsvpClosed: one
+ * clock for the deadline (open -> late/closed) and one for the end of the
+ * late window (late -> closed). No end date, or late RSVPs off, = no second
+ * timer. Rendered with the same clock rule as useRsvpClosed, so the server
+ * HTML and hydration agree.
+ */
+export function useRsvpWindow(
+  deadlineIso: string,
+  content: Pick<WeddingContent, "lateRsvp">,
+): RsvpWindow {
+  useRsvpClosed(deadlineIso);
+  useRsvpClosed(
+    content.lateRsvp?.enabled === true ? (content.lateRsvp.until ?? "") : "",
+  );
+  return getRsvpWindow(deadlineIso, content);
 }

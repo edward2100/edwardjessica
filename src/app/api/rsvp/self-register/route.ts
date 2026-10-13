@@ -9,7 +9,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import {
   findPublicInviteTypeByCode,
   getEffectiveRsvpDeadline,
-  isRsvpClosed,
+  getRsvpWindow,
   validateSelfRegistration,
   validateSelfRegistrationForInviteType,
 } from "@/lib/rsvp";
@@ -44,13 +44,16 @@ export async function POST(request: Request) {
       content,
       typeof rawBody.accessCode === "string" ? rawBody.accessCode : "",
     );
-    if (
-      isRsvpClosed(
-        getEffectiveRsvpDeadline(content, { inviteType: requestedInviteType }),
-      )
-    ) {
+    // LR-2: in the late window new registrations are still accepted (and
+    // marked late in admin); only "closed" answers 403, still before auth.
+    const rsvpWindow = getRsvpWindow(
+      getEffectiveRsvpDeadline(content, { inviteType: requestedInviteType }),
+      content,
+    );
+    if (rsvpWindow === "closed") {
       return NextResponse.json({ error: "RSVP editing is closed." }, { status: 403 });
     }
+    const late = rsvpWindow === "late";
 
     const guestAuth = await getGuestAuthSession();
     if (!guestAuth?.email) {
@@ -86,7 +89,11 @@ export async function POST(request: Request) {
 
     // D1: email runs AFTER the successful save and can never throw past itself.
     // emailStatus is included in the response so the client can notify the guest.
-    const emailResult = await sendRsvpConfirmationEmail({ content, invitation }).catch(
+    const emailResult = await sendRsvpConfirmationEmail({
+      content,
+      invitation,
+      late,
+    }).catch(
       (err) => {
         console.error(
           `[self-register] Unexpected error sending confirmation email for ${invitation.code}:`,
@@ -109,6 +116,8 @@ export async function POST(request: Request) {
       invitation: { ...safeInvitation, emailClaimed: Boolean(invitation.email) },
       existing: false,
       emailStatus: emailResult.status,
+      // LR-4: lets the success card add its late sentence.
+      late,
     });
   } catch (error) {
     return NextResponse.json(

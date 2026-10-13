@@ -4,6 +4,7 @@ import {
   BarChart3,
   Check,
   CheckCircle2,
+  Clock,
   Copy,
   Download,
   Edit3,
@@ -64,6 +65,8 @@ import type {
   ImageFrameRatio,
   InvitationGroup,
   InvitationTravelOverrides,
+  LateResponse,
+  LateRsvpSetting,
   MediaAsset,
   OpeningAnimation,
   PublicInviteFlow,
@@ -456,7 +459,10 @@ function DashboardView({ snapshot }: { snapshot: AdminSnapshot }) {
                 <tr key={invitation.id}>
                   <td>{invitation.groupName}</td>
                   <td>
-                    <StatusPill status={invitation.rsvp.status} />
+                    <div className="rsvp-status-cell">
+                      <StatusPill status={invitation.rsvp.status} />
+                      <LateBadge late={snapshot.lateResponses[invitation.id]} />
+                    </div>
                   </td>
                   <td>{attendanceEventLabels(invitation)}</td>
                   <td>{formatDateTime(invitation.rsvp.updatedAt)}</td>
@@ -482,6 +488,10 @@ function MetricGrid({ snapshot }: { snapshot: AdminSnapshot }) {
     ["Complete", `${stats.rsvpCompletionRate}%`],
     ["Vegetarian", stats.vegetarianMeals],
   ];
+  // LR-3: answers that arrived after the guest's RSVP deadline.
+  const lateResponses = Object.values(snapshot.lateResponses);
+  const lateCount = lateResponses.filter((late) => late.kind === "late").length;
+  const changedLateCount = lateResponses.length - lateCount;
   return (
     <div className="metric-grid">
       {metrics.map(([label, value]) => (
@@ -490,6 +500,11 @@ function MetricGrid({ snapshot }: { snapshot: AdminSnapshot }) {
           <strong>{value}</strong>
         </div>
       ))}
+      <div className="metric">
+        <span className="muted">Late RSVPs</span>
+        <strong>{lateCount}</strong>
+        <small className="muted">{changedLateCount} changed late</small>
+      </div>
     </div>
   );
 }
@@ -616,6 +631,7 @@ function GuestsView({
       <InvitationTable
         content={snapshot.content}
         invitations={filtered}
+        lateResponses={snapshot.lateResponses}
         messageLogs={snapshot.messageLogs}
         editableFlow
         onEdit={setEditing}
@@ -1113,6 +1129,7 @@ function RsvpView({
       <InvitationTable
         content={snapshot.content}
         invitations={filtered}
+        lateResponses={snapshot.lateResponses}
         messageLogs={snapshot.messageLogs}
         showMeals
         editableStatus
@@ -1125,6 +1142,7 @@ function RsvpView({
 function InvitationTable({
   content,
   invitations,
+  lateResponses,
   messageLogs,
   showMeals = false,
   editableStatus = false,
@@ -1134,6 +1152,8 @@ function InvitationTable({
 }: {
   content: WeddingContent;
   invitations: InvitationGroup[];
+  /** LR-3: late markers by invitation id. */
+  lateResponses: AdminSnapshot["lateResponses"];
   messageLogs: AdminMessageLog[];
   showMeals?: boolean;
   editableStatus?: boolean;
@@ -1258,27 +1278,30 @@ function InvitationTable({
                 )}
               </td>
               <td>
-                {editableStatus ? (
-                  <select
-                    className="select"
-                    value={invitation.rsvp.status}
-                    disabled={updatingCode === invitation.code}
-                    onChange={(event) =>
-                      updateStatus(
-                        invitation.code,
-                        event.target.value as RsvpStatus,
-                      )
-                    }
-                    aria-label={`RSVP status for ${invitation.groupName}`}
-                    style={{ minWidth: 150 }}
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="attending">Attending</option>
-                    <option value="declined">Declined</option>
-                  </select>
-                ) : (
-                  <StatusPill status={invitation.rsvp.status} />
-                )}
+                <div className="rsvp-status-cell">
+                  {editableStatus ? (
+                    <select
+                      className="select"
+                      value={invitation.rsvp.status}
+                      disabled={updatingCode === invitation.code}
+                      onChange={(event) =>
+                        updateStatus(
+                          invitation.code,
+                          event.target.value as RsvpStatus,
+                        )
+                      }
+                      aria-label={`RSVP status for ${invitation.groupName}`}
+                      style={{ minWidth: 150 }}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="attending">Attending</option>
+                      <option value="declined">Declined</option>
+                    </select>
+                  ) : (
+                    <StatusPill status={invitation.rsvp.status} />
+                  )}
+                  <LateBadge late={lateResponses[invitation.id]} />
+                </div>
                 {invitation.source === "generic" ? (
                   <p className="muted" style={{ marginTop: 6 }}>
                     Self-registered
@@ -1468,6 +1491,25 @@ function WhatsAppMessageActions({
 
 function StatusPill({ status }: { status: string }) {
   return <span className={`status-pill ${status}`}>{status}</span>;
+}
+
+// LR-3: "Late" / "Changed late" beside an RSVP status; the tooltip says when
+// it arrived (Asia/Jakarta).
+function LateBadge({ late }: { late?: LateResponse }) {
+  if (!late) return null;
+  const detail =
+    late.kind === "late"
+      ? "First answer after the RSVP deadline"
+      : "Changed by the guest after the RSVP deadline";
+  return (
+    <span
+      className="late-pill"
+      title={`${detail}: ${formatDateTime(late.at)} (Asia/Jakarta)`}
+    >
+      <Clock size={12} aria-hidden="true" />
+      {late.kind === "late" ? "Late" : "Changed late"}
+    </span>
+  );
 }
 
 function ContentView({
@@ -1666,6 +1708,20 @@ function ContentView({
     });
   }
 
+  // LR-1: edit the late-RSVP setting. A cleared end date is removed (never
+  // ""), which means late RSVPs have no end date.
+  function setLateRsvp(update: Partial<LateRsvpSetting>) {
+    setDraft((current) => {
+      const nextLateRsvp: LateRsvpSetting = {
+        enabled: current.lateRsvp?.enabled === true,
+        ...current.lateRsvp,
+        ...update,
+      };
+      if (!nextLateRsvp.until) delete nextLateRsvp.until;
+      return { ...current, lateRsvp: nextLateRsvp };
+    });
+  }
+
   const contactWhatsAppInput = draft.rsvpContact?.whatsappUrl ?? "";
   const contactWhatsAppSaved = normalizeWhatsAppUrl(contactWhatsAppInput);
   const contactEmailInput = draft.rsvpContact?.email ?? "";
@@ -1737,6 +1793,61 @@ function ContentView({
             }}
           />
         </label>
+        {/* LR-1: late RSVPs once a guest's deadline has passed. Clearing the
+            end date stores no value (never ""), which means no end date. */}
+        <div className="form-field">
+          <span>Late RSVPs</span>
+          <label className="choice-row">
+            <span>Accept late RSVPs after the deadline</span>
+            <input
+              type="checkbox"
+              checked={draft.lateRsvp?.enabled === true}
+              onChange={(event) =>
+                setLateRsvp({ enabled: event.target.checked })
+              }
+            />
+          </label>
+          <span>
+            Late RSVPs accepted until (Asia/Jakarta) — leave blank for no end
+            date
+          </span>
+          {/* Wraps "Clear" under the input on a phone instead of widening
+              the form past the panel. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <input
+              className="input"
+              type="datetime-local"
+              aria-label="Late RSVPs accepted until (Asia/Jakarta)"
+              style={{ flex: "1 1 240px" }}
+              value={
+                draft.lateRsvp?.until
+                  ? isoToJakartaLocal(draft.lateRsvp.until)
+                  : ""
+              }
+              onChange={(event) =>
+                setLateRsvp({
+                  until: event.target.value
+                    ? jakartaLocalToIso(event.target.value)
+                    : undefined,
+                })
+              }
+            />
+            <button
+              className="button button-muted"
+              type="button"
+              disabled={!draft.lateRsvp?.until}
+              onClick={() => setLateRsvp({ until: undefined })}
+            >
+              Clear
+            </button>
+          </div>
+          <small className="muted">
+            Once a guest&apos;s RSVP deadline has passed, their RSVP card shows
+            a gold &quot;Send a late RSVP&quot; button (&quot;Update my
+            RSVP&quot; if they already answered) until this date. Late answers
+            are saved and marked Late in the guest list.
+          </small>
+        </div>
         {/* CL-3: how guests reach you once RSVP is closed (closed RSVP cards
             and the travel page). Blank both = generic "contact us" text. */}
         <label className="form-field">

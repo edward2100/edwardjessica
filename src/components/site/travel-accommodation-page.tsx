@@ -17,15 +17,16 @@ import {
   travelAccommodationHref,
 } from "@/lib/guest-navigation";
 import { travelPageCopy } from "@/lib/guest-page-copy";
-import { copy } from "@/lib/i18n";
+import { copy, lateRsvpText } from "@/lib/i18n";
 import { hasRsvpContact } from "@/lib/rsvp";
 import { useGuestLanguage } from "@/lib/use-guest-language";
-import { useRsvpClosed } from "@/lib/use-rsvp-closed";
+import { useRsvpWindow } from "@/lib/use-rsvp-closed";
 import type {
   InvitationGroup,
   Language,
   PublicInviteFlow,
   RsvpContact,
+  RsvpWindow,
   TravelAccommodationOption,
   TravelPlan,
   WeddingContent,
@@ -161,7 +162,8 @@ export function TravelAccommodationPage({
   // CL-4: content.rsvpDeadline is this visitor's effective deadline (the
   // invitation's own one when a code resolved). Travel stays open for
   // attending guests; everyone else gets closed copy instead of "RSVP here".
-  const rsvpClosed = useRsvpClosed(content.rsvpDeadline);
+  // LR-4: while late RSVPs are open they get a late RSVP link instead.
+  const rsvpWindow = useRsvpWindow(content.rsvpDeadline, content);
   // E2-5: show "not applicable" notice when code found but wrong flow;
   // show "invalid code" only for genuinely unknown codes.
   const showNotApplicable = Boolean(codeFoundButWrongFlow);
@@ -381,7 +383,9 @@ export function TravelAccommodationPage({
               <TravelPlansForm
                 canSubmitTravel={canSubmitTravel}
                 contact={content.rsvpContact}
-                rsvpClosed={rsvpClosed}
+                rsvpWindow={rsvpWindow}
+                lateUntil={content.lateRsvp?.until}
+                timeZone={content.timezone}
                 notApplicable={showNotApplicable}
                 invitationCode={invitation?.code}
                 language={language}
@@ -483,7 +487,9 @@ function TravelSubmittedCard({
 function TravelPlansForm({
   canSubmitTravel,
   contact,
-  rsvpClosed,
+  rsvpWindow,
+  lateUntil,
+  timeZone,
   notApplicable,
   flow,
   invitationCode,
@@ -497,8 +503,11 @@ function TravelPlansForm({
   canSubmitTravel: boolean;
   /** CL-4: couple contact shown with the closed copy. */
   contact?: RsvpContact;
-  /** CL-4: the visitor's effective RSVP deadline has passed. */
-  rsvpClosed: boolean;
+  /** CL-4 / LR-4: the visitor's RSVP window (deadline + late RSVPs). */
+  rsvpWindow: RsvpWindow;
+  /** LR-4: end of the late window (absent = no end date). */
+  lateUntil?: string;
+  timeZone?: string;
   /** E2-5: the code belongs to a guest this page does not apply to. */
   notApplicable?: boolean;
   flow: PublicInviteFlow;
@@ -517,10 +526,14 @@ function TravelPlansForm({
   const ci = copy[language];
   const isFamilyFlow = flow === "family";
   const isDeclined = rsvpStatus === "declined";
+  const rsvpClosed = rsvpWindow === "closed";
+  // LR-4: deadline passed, late RSVPs still accepted.
+  const rsvpLate = rsvpWindow === "late";
   // CL-4: after the deadline, a guest this page does not apply to gets no
   // closed / locked copy (it would contradict their own status); the page's
-  // "not applicable" notice explains why the form is off.
-  const hideLockedCopy = Boolean(notApplicable) && rsvpClosed;
+  // "not applicable" notice explains why the form is off. LR-4: the same in
+  // the late window.
+  const hideLockedCopy = Boolean(notApplicable) && rsvpWindow !== "open";
 
   // B3: local datetime string for an ISO date
   function isoToLocal(iso?: string): string {
@@ -630,7 +643,19 @@ function TravelPlansForm({
             transportNote ?? null
           ) : isDeclined ? (
             // CL-4: after the deadline a declined guest can't update the RSVP.
-            rsvpClosed ? c.declinedClosedCopy : c.declinedCopy
+            rsvpClosed ? (
+              c.declinedClosedCopy
+            ) : rsvpLate ? (
+              // LR-4: ...unless late RSVPs are still open.
+              <>
+                {lateRsvpText(c.lateDeclinedCopy, language, lateUntil, timeZone)}{" "}
+                <Link className="travel-inline-link" href={rsvpHref as Route}>
+                  {ci.updateMyRsvp}
+                </Link>
+              </>
+            ) : (
+              c.declinedCopy
+            )
           ) : rsvpClosed ? (
             // CL-4: no "RSVP here" link to a closed form. A visitor without an
             // invitation code may be a registered guest on a new device: link
@@ -649,7 +674,8 @@ function TravelPlansForm({
             <>
               {c.lockedCopy}{" "}
               <Link className="travel-inline-link" href={rsvpHref as Route}>
-                {c.rsvpHere}
+                {/* LR-4: the same #rsvp link, as a late RSVP. */}
+                {rsvpLate ? ci.sendLateRsvp : c.rsvpHere}
               </Link>
             </>
           )}

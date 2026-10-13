@@ -143,8 +143,14 @@ const overseasFamilyFriends: PublicInviteType = {
   rsvpDeadline: DEADLINE,
 };
 
+// LR-5: late RSVPs off — these pages must switch to the fully closed card
+// (late-window switching is covered in late-rsvp-render.test.tsx).
 const content = toGuestContent(
-  { ...weddingContent, rsvpContact: { whatsappUrl: OWNER_WHATSAPP } },
+  {
+    ...weddingContent,
+    rsvpContact: { whatsappUrl: OWNER_WHATSAPP },
+    lateRsvp: { enabled: false },
+  },
   DEADLINE,
 );
 

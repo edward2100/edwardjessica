@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getAdminSnapshot } from "@/lib/data-store";
-import { serializeInvitationsCsv } from "@/lib/csv";
+import { lateCsvValue, serializeInvitationsCsv } from "@/lib/csv";
 import { getSiteUrl } from "@/lib/env";
 
 export async function GET(request: Request) {
@@ -36,6 +36,8 @@ export async function GET(request: Request) {
       guestName: guest.name,
       mealPreference: guest.mealPreference,
       rsvpStatus: invitation.rsvp.status,
+      // LR-3: "late" / "changed late" / "" (answered on time or not at all).
+      late: lateCsvValue(snapshot.lateResponses[invitation.id]),
       events: selectedEvents.join("|"),
       phone: invitation.phone,
       email: invitation.email,

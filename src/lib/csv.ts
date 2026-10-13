@@ -3,6 +3,7 @@ import type {
   EventKey,
   GuestCsvRow,
   GuestSide,
+  LateResponse,
   PublicInviteFlow,
 } from "@/lib/types";
 import { eventKeys } from "@/lib/rsvp";
@@ -95,6 +96,13 @@ function sanitizeCsvCell(
     return `'${value}`;
   }
   return value;
+}
+
+// LR-3: the export's `late` column for one invitation's late marker.
+export function lateCsvValue(late: LateResponse | undefined) {
+  if (late?.kind === "late") return "late";
+  if (late?.kind === "changed_late") return "changed late";
+  return "";
 }
 
 export function serializeInvitationsCsv(
