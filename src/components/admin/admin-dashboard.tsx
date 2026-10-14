@@ -12,6 +12,7 @@ import {
   ImagePlus,
   LayoutDashboard,
   LogOut,
+  Mail,
   MapPin,
   MessageCircle,
   Music2,
@@ -1302,6 +1303,9 @@ function InvitationTable({
                   )}
                   <LateBadge late={lateResponses[invitation.id]} />
                 </div>
+                {editableStatus ? (
+                  <EmailConfirmationAction invitation={invitation} />
+                ) : null}
                 {invitation.source === "generic" ? (
                   <p className="muted" style={{ marginTop: 6 }}>
                     Self-registered
@@ -1375,6 +1379,108 @@ function CopyInviteLinkButton({ code }: { code: string }) {
       {copied ? <Check size={13} /> : <Copy size={13} />}
       {copied ? "Copied" : "Copy link"}
     </button>
+  );
+}
+
+// AE-1: emails the guest the same RSVP confirmation they get after RSVPing
+// online (status, events, guests, meals, invite link). Opens a small panel
+// with the address first (the group's email, editable for this send only),
+// so nothing goes out by accident. Only for groups with a recorded RSVP.
+function EmailConfirmationAction({ invitation }: { invitation: InvitationGroup }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState(invitation.email ?? "");
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState("");
+  const pending = invitation.rsvp.status === "pending";
+  const valid = Boolean(normalizeContactEmail(email));
+  const inputId = `confirmation-email-${invitation.id}`;
+
+  async function send() {
+    setSending(true);
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/rsvp/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: invitation.code, email: email.trim() }),
+      });
+      const json = (await response.json()) as { to?: string; error?: string };
+      if (response.ok && json.to) {
+        setNotice(`Confirmation sent to ${json.to}.`);
+        setOpen(false);
+      } else {
+        setNotice(json.error || "Unable to send the email.");
+      }
+    } catch {
+      setNotice("Unable to send the email. Check your connection and try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+      {open ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          <label className="form-field" htmlFor={inputId}>
+            <span>Send the RSVP confirmation to</span>
+            <input
+              className="input"
+              id={inputId}
+              type="email"
+              value={email}
+              placeholder="guest@example.com"
+              onChange={(event) => setEmail(event.target.value)}
+              style={{ minWidth: 260 }}
+            />
+          </label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <button
+              className="button button-brown"
+              type="button"
+              disabled={!valid || sending}
+              onClick={() => void send()}
+            >
+              <Send size={14} />
+              {sending ? "Sending..." : "Send email"}
+            </button>
+            <button
+              className="button button-muted"
+              type="button"
+              disabled={sending}
+              onClick={() => {
+                setOpen(false);
+                setNotice("");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="button button-muted"
+          type="button"
+          disabled={pending}
+          title={pending ? "Record an RSVP first" : undefined}
+          onClick={() => {
+            setEmail(invitation.email ?? "");
+            setNotice("");
+            setOpen(true);
+          }}
+          style={{ padding: "3px 10px", fontSize: "0.8em", justifySelf: "start" }}
+          aria-label={`Email RSVP confirmation for ${invitation.groupName}`}
+        >
+          <Mail size={13} />
+          Email confirmation
+        </button>
+      )}
+      {notice ? (
+        <p className="muted" role="status" style={{ fontSize: "0.85em" }}>
+          {notice}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

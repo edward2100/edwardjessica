@@ -140,13 +140,17 @@ export async function sendRsvpConfirmationEmail({
   content,
   invitation,
   late = false,
+  to,
 }: {
   content: WeddingContent;
   invitation: InvitationGroup;
   /** LR-2: true when the route accepted this RSVP in the late window. */
   late?: boolean;
+  /** AE-1: send to this address instead of the group's email (admin sends). */
+  to?: string;
 }): Promise<RsvpEmailResult> {
-  if (!invitation.email) {
+  const recipient = to || invitation.email;
+  if (!recipient) {
     return { status: "skipped", reason: "Invitation has no email." };
   }
 
@@ -174,7 +178,7 @@ export async function sendRsvpConfirmationEmail({
     },
     body: JSON.stringify({
       from,
-      to: invitation.email,
+      to: recipient,
       reply_to: replyTo,
       subject,
       html,
