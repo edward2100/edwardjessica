@@ -100,24 +100,22 @@ function rsvpSection(element: ReactElement) {
 }
 
 describe("simple link page, server-rendered (SF-3)", () => {
-  it("save-the-date without a calendar button, and no Schedule or event times anywhere", () => {
+  it("shows the same page as the standard link: save-the-date, The Day's Events with times, both calendar buttons", () => {
     const html = renderToStaticMarkup(linkPage());
     expect(html).toContain("Save the Date");
     expect(html).toContain("Saturday");
     expect(html).toContain("12 December 2026");
     expect(html).toContain(`href="${weddingContent.venue.mapsUrl}"`);
-    expect(html).not.toContain("/calendar.ics");
-    expect(html).not.toContain("Add to Calendar");
-    expect(html).not.toContain('<p class="eyebrow">Schedule</p>');
-    expect(html).not.toContain("The Day’s Events");
+    expect(html).toContain('<p class="eyebrow">Schedule</p>');
+    expect(html).toContain("The Day’s Events");
     for (const event of weddingContent.events) {
-      expect(html).not.toContain(event.startTime);
-      expect(html).not.toContain(htmlText(event.title.en));
+      expect(html).toContain(event.startTime);
+      expect(html).toContain(htmlText(event.title.en));
     }
+    expect(html.match(/href="\/calendar\.ics"/g)).toHaveLength(2);
     const id = renderToStaticMarkup(linkPage({ language: "id" }));
     expect(id).toContain("Catat Tanggalnya");
-    expect(id).not.toContain("Tambah Kalender");
-    expect(id).not.toContain("Rangkaian Acara");
+    expect(id).toContain("Tambah Kalender");
   });
 
   it("the open RSVP card is the standard link's card (no date or countdown with No deadline)", () => {
@@ -464,10 +462,12 @@ describe("simple form in the browser (SF-3)", () => {
     expect(rsvp.querySelector(`a[href="${OWNER_WHATSAPP}"]`)?.textContent).toBe(
       "Message us on WhatsApp",
     );
-    // The form and the "Ready to confirm?" card are gone; no calendar, no invite link.
+    // The form and the "Ready to confirm?" card are gone; the success screen
+    // itself has no calendar file and no invite link (the page above keeps
+    // its schedule and calendar buttons).
     expect(container.querySelector("#simple-name")).toBeNull();
     expect(text).not.toContain("Ready to confirm?");
-    expect(container.querySelector('a[href="/calendar.ics"]')).toBeNull();
+    expect(rsvp.querySelector('a[href="/calendar.ics"]')).toBeNull();
     expect(text).not.toMatch(/View your invite|Add to Calendar|\/invite\//);
   });
 

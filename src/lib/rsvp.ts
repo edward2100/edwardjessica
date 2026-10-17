@@ -236,19 +236,16 @@ export function toGuestContent(
 }
 
 // SF-3: the guest content for a public link's page (DL-7 above with the
-// link's own deadline). A simple-form link also gets no events, so event
-// names and times never reach its guests, not even in the page data.
+// link's own deadline). A simple-form link shows the same page, including
+// "The Day's Events"; only its RSVP form leaves out the event choices.
 export function toLinkGuestContent(
   content: WeddingContent,
   inviteType: PublicInviteType,
 ): WeddingContent {
-  const guestContent = toGuestContent(
+  return toGuestContent(
     content,
     getEffectiveRsvpDeadline(content, { inviteType }),
   );
-  return isSimplePublicInviteType(inviteType)
-    ? { ...guestContent, events: [] }
-    : guestContent;
 }
 
 // CL-11: the invitation fields guest pages may serialize into the browser.

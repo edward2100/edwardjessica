@@ -62,27 +62,23 @@ test.afterAll(async () => {
   await admin.dispose();
 });
 
-test("/JESSmarriED: no schedule or calendar, and an RSVP without an email code", async ({
+test("/JESSmarriED: the full page with The Day's Events, and an RSVP without an email code", async ({
   page,
 }) => {
   const suffix = crypto.randomUUID().slice(0, 8);
   const email = `simple-${suffix}@example.com`;
   const guestName = `Simple Guest ${suffix}`;
 
-  // No event data in the page at all (not even in the hydration payload).
-  const source = await (await page.request.get("/JESSmarriED")).text();
-  expect(source).not.toContain("startTime");
-  expect(source).not.toContain("/calendar.ics");
-
+  // Same page as the standard link: The Day's Events with times and both
+  // calendar buttons. Only the RSVP form leaves out the event choices.
   await page.goto("/JESSmarriED");
   await page.getByRole("button", { name: en.openInvitation }).click();
   await expect(page.getByText(en.saveTheDate, { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: en.scheduleTitle })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: en.scheduleTitle })).toBeVisible();
   for (const event of weddingContent.events) {
-    await expect(page.getByRole("heading", { name: event.title.en })).toHaveCount(0);
-    await expect(page.getByText(event.startTime)).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: event.title.en })).toBeVisible();
   }
-  await expect(page.locator('a[href="/calendar.ics"]')).toHaveCount(0);
+  await expect(page.locator('a[href="/calendar.ics"]')).toHaveCount(2);
 
   await page.getByRole("button", { name: en.registerRsvp }).click();
   await expect(page.getByRole("heading", { name: en.simpleFormTitle })).toBeVisible();
@@ -102,7 +98,8 @@ test("/JESSmarriED: no schedule or calendar, and an RSVP without an email code",
     weddingContent.venue.mapsUrl,
   );
   await expect(page.getByRole("link", { name: en.contactWhatsApp })).toBeVisible();
-  await expect(page.locator('a[href="/calendar.ics"]')).toHaveCount(0);
+  // The success screen itself offers no calendar file or invite link.
+  await expect(page.locator('#rsvp a[href="/calendar.ics"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: en.viewYourInvite })).toHaveCount(0);
 
   // Saved for the couple: the dinner only, meals unset, the note, no deadline.

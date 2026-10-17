@@ -209,17 +209,13 @@ describe("root address resolution (SF-2)", () => {
 });
 
 describe("link page data (SF-3)", () => {
-  it("a simple link's page gets no events (no names or times in the payload); a standard link's is unchanged", () => {
+  it("a simple link's page keeps the day's events like any link (only its form drops the event choices)", () => {
     const content = withLinks(SIMPLE);
     const simple = toLinkGuestContent(content, SIMPLE);
-    expect(simple.events).toEqual([]);
+    expect(simple.events).toEqual(content.events);
+    expect(simple.events).toHaveLength(3);
     expect(simple.rsvpDeadline).toBe(NO_RSVP_DEADLINE);
     expect(simple.publicInviteTypes).toEqual([]);
-    const payload = JSON.stringify(simple);
-    for (const event of weddingContent.events) {
-      expect(payload).not.toContain(`"${event.startTime}"`);
-      expect(payload).not.toContain(event.title.en);
-    }
     expect(toLinkGuestContent(content, generic)).toEqual(
       toGuestContent(content, getEffectiveRsvpDeadline(content, { inviteType: generic })),
     );
