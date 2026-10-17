@@ -46,6 +46,8 @@ import {
   buildAdminWhatsAppMessage,
   buildWhatsAppMessageUrl,
   eventKeys,
+  isNoRsvpDeadline,
+  NO_RSVP_DEADLINE,
   mealPreferences,
   normalizeContactEmail,
   normalizeWhatsAppUrl,
@@ -844,12 +846,31 @@ function GuestGroupEditor({
             key keeps the stored override. */}
         <div className="form-field">
           <span>RSVP deadline override (Asia/Jakarta)</span>
+          {/* ND-1: "No deadline" keeps this invite open with no date shown. */}
+          <label className="choice-row">
+            <span>No deadline — this guest can RSVP any time</span>
+            <input
+              type="checkbox"
+              checked={isNoRsvpDeadline(draft.rsvpDeadline)}
+              onChange={(event) =>
+                setField(
+                  "rsvpDeadline",
+                  event.target.checked ? NO_RSVP_DEADLINE : null,
+                )
+              }
+            />
+          </label>
           <div style={{ display: "flex", gap: 8 }}>
             <input
               className="input"
               type="datetime-local"
               aria-label="RSVP deadline override (Asia/Jakarta)"
-              value={draft.rsvpDeadline ? isoToJakartaLocal(draft.rsvpDeadline) : ""}
+              disabled={isNoRsvpDeadline(draft.rsvpDeadline)}
+              value={
+                draft.rsvpDeadline && !isNoRsvpDeadline(draft.rsvpDeadline)
+                  ? isoToJakartaLocal(draft.rsvpDeadline)
+                  : ""
+              }
               onChange={(event) =>
                 setField(
                   "rsvpDeadline",
@@ -862,7 +883,7 @@ function GuestGroupEditor({
             <button
               className="button button-muted"
               type="button"
-              disabled={!draft.rsvpDeadline}
+              disabled={!draft.rsvpDeadline || isNoRsvpDeadline(draft.rsvpDeadline)}
               onClick={() => setField("rsvpDeadline", null)}
             >
               Clear
@@ -1314,7 +1335,9 @@ function InvitationTable({
                 {invitation.rsvpDeadline ? (
                   // DL-10: this invitation has its own RSVP deadline.
                   <p className="muted" style={{ marginTop: 6 }}>
-                    Deadline: {formatShortJakartaDate(invitation.rsvpDeadline)}
+                    {isNoRsvpDeadline(invitation.rsvpDeadline)
+                      ? "No deadline"
+                      : `Deadline: ${formatShortJakartaDate(invitation.rsvpDeadline)}`}
                   </p>
                 ) : null}
               </td>
@@ -2170,13 +2193,32 @@ function ContentView({
                     RSVP deadline (Asia/Jakarta) — leave blank to use the main
                     deadline
                   </span>
+                  {/* ND-1: "No deadline" keeps the link (and everyone who
+                      registers through it) open, with no date shown. */}
+                  <label className="choice-row">
+                    <span>No deadline — stays open</span>
+                    <input
+                      type="checkbox"
+                      aria-label={`No deadline for ${inviteType.label.en}`}
+                      checked={isNoRsvpDeadline(inviteType.rsvpDeadline)}
+                      onChange={(event) =>
+                        updatePublicInviteType(index, {
+                          rsvpDeadline: event.target.checked
+                            ? NO_RSVP_DEADLINE
+                            : undefined,
+                        })
+                      }
+                    />
+                  </label>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input
                       className="input"
                       type="datetime-local"
                       aria-label={`RSVP deadline for ${inviteType.label.en}`}
+                      disabled={isNoRsvpDeadline(inviteType.rsvpDeadline)}
                       value={
-                        inviteType.rsvpDeadline
+                        inviteType.rsvpDeadline &&
+                        !isNoRsvpDeadline(inviteType.rsvpDeadline)
                           ? isoToJakartaLocal(inviteType.rsvpDeadline)
                           : ""
                       }
@@ -2191,7 +2233,10 @@ function ContentView({
                     <button
                       className="button button-muted"
                       type="button"
-                      disabled={!inviteType.rsvpDeadline}
+                      disabled={
+                        !inviteType.rsvpDeadline ||
+                        isNoRsvpDeadline(inviteType.rsvpDeadline)
+                      }
                       onClick={() =>
                         updatePublicInviteType(index, {
                           rsvpDeadline: undefined,

@@ -44,6 +44,7 @@ import {
   getRsvpDaysLeft,
   getRsvpWindow,
   hasRsvpContact,
+  isNoRsvpDeadline,
   mealPreferences,
   normalizeInviteCode,
 } from "@/lib/rsvp";
@@ -107,12 +108,15 @@ export function InvitePage({
   );
   const rsvpMeta = [
     currentInvitation.groupName,
-    formatDeadlineCopy(
-      c.rsvpBy,
-      content.rsvpDeadline,
-      content.timezone,
-      language,
-    ),
+    // ND-1: no "RSVP by" date when this invite has no deadline.
+    isNoRsvpDeadline(content.rsvpDeadline)
+      ? ""
+      : formatDeadlineCopy(
+          c.rsvpBy,
+          content.rsvpDeadline,
+          content.timezone,
+          language,
+        ),
     isSelfRegistered ? c.adminMayFollowUp : "",
   ]
     .filter(Boolean)
