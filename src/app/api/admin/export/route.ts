@@ -41,6 +41,8 @@ export async function GET(request: Request) {
       events: selectedEvents.join("|"),
       phone: invitation.phone,
       email: invitation.email,
+      // SF-6: the group's RSVP note, e.g. "Dietary: Vegetarian".
+      note: invitation.rsvp.message,
     }));
   });
   return new Response(serializeInvitationsCsv(rows), {

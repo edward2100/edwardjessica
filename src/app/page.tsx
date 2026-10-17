@@ -3,11 +3,7 @@ import { SelfRegisterInvitePage } from "@/components/site/self-register-invite-p
 import { getPublishedContent } from "@/lib/data-store";
 import { getSiteUrl } from "@/lib/env";
 import { getLanguagePreference } from "@/lib/language-preference-server";
-import {
-  getDefaultPublicInviteType,
-  getEffectiveRsvpDeadline,
-  toGuestContent,
-} from "@/lib/rsvp";
+import { getDefaultPublicInviteType, toLinkGuestContent } from "@/lib/rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -45,12 +41,10 @@ export default async function Page() {
   const inviteType = getDefaultPublicInviteType(content);
   const initialLanguage = await getLanguagePreference();
   // DL-7: effective (link) deadline, no other link codes in the payload.
+  // SF-3: no events in the payload if this link uses the simple form.
   return (
     <SelfRegisterInvitePage
-      content={toGuestContent(
-        content,
-        getEffectiveRsvpDeadline(content, { inviteType }),
-      )}
+      content={toLinkGuestContent(content, inviteType)}
       inviteType={inviteType}
       initialLanguage={initialLanguage}
     />

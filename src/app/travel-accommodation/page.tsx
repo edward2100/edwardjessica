@@ -98,6 +98,8 @@ export default async function Page({
       codeFoundButWrongFlow={codeFoundButWrongFlow}
       existingTravelPlan={existingTravelPlan}
       linkCode={invitation ? undefined : customPublicLinkCode(linkType)}
+      // SF-2: back links return to the link's custom address when it has one.
+      linkPath={invitation ? undefined : linkType?.path}
       initialLanguage={initialLanguage}
     />
   );

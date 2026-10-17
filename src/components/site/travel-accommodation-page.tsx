@@ -91,6 +91,7 @@ export function TravelAccommodationPage({
   codeFoundButWrongFlow,
   existingTravelPlan,
   linkCode,
+  linkPath,
   initialLanguage,
 }: {
   content: WeddingContent;
@@ -104,6 +105,8 @@ export function TravelAccommodationPage({
   existingTravelPlan?: TravelPlan | null;
   /** DL-9: custom public link code (validated server-side) for back-links. */
   linkCode?: string;
+  /** SF-2: that link's custom address (e.g. "JESSmarriED"), if it has one. */
+  linkPath?: string;
   /** Saved language from the ej_language cookie, so SSR matches hydration. */
   initialLanguage?: Language | null;
 }) {
@@ -126,6 +129,7 @@ export function TravelAccommodationPage({
     invitation?.code,
     activeFlow,
     linkCode,
+    linkPath,
   );
   const activeTravelHref = travelAccommodationHref(
     invitation?.code,
@@ -394,7 +398,7 @@ export function TravelAccommodationPage({
                 rsvpHref={
                   invitation?.code
                     ? `${activeInvitationHref}#rsvp`
-                    : `${publicInvitationHref(activeFlow, linkCode)}#rsvp`
+                    : `${publicInvitationHref(activeFlow, linkCode, linkPath)}#rsvp`
                 }
                 initialPlan={editingTravel ? submittedPlan : null}
                 onSubmitSuccess={(plan) => {

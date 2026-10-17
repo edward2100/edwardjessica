@@ -16,10 +16,13 @@ type SaveDateLabels = {
 
 export function SaveDateSection({
   content,
-  labels
+  labels,
+  showCalendarButton = true
 }: {
   content: WeddingContent;
   labels: SaveDateLabels;
+  /** SF-3: false hides "Add to calendar" (the .ics carries event times). */
+  showCalendarButton?: boolean;
 }) {
   return (
     <section className="section save-date-section">
@@ -32,10 +35,12 @@ export function SaveDateSection({
             <h3 className="invitation-venue serif">{labels.weddingVenueName}</h3>
             <p className="invitation-city serif">{labels.weddingVenueCity}</p>
             <InvitationMapLink mapsUrl={content.venue.mapsUrl} venueName={content.venue.name} openMapLabel={labels.openMap} />
-            <a className="button button-muted save-date-calendar-button" href="/calendar.ics" download="edward-jessica-wedding.ics">
-              <CalendarDays size={17} />
-              {labels.addToCalendar}
-            </a>
+            {showCalendarButton ? (
+              <a className="button button-muted save-date-calendar-button" href="/calendar.ics" download="edward-jessica-wedding.ics">
+                <CalendarDays size={17} />
+                {labels.addToCalendar}
+              </a>
+            ) : null}
           </div>
         </div>
       </div>

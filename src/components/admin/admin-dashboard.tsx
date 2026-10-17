@@ -35,7 +35,10 @@ import {
   isoToJakartaLocal,
   jakartaLocalToIso,
 } from "@/lib/admin-drafts";
-import { publicLinkShortPath } from "@/lib/guest-navigation";
+import {
+  publicLinkPathProblem,
+  publicLinkShortPath,
+} from "@/lib/guest-navigation";
 import {
   defaultImageCrop,
   FRAME_RATIOS,
@@ -171,6 +174,9 @@ const publicInviteFlowLabels: Record<PublicInviteFlow, string> = {
   overseas: "Overseas",
   family: "Family",
 };
+
+// SF-6: the live site, for custom-address previews and share hints.
+const PUBLIC_SITE_HOST = "rsvp.edwardjessica.com";
 
 const whatsappMessageLabels: Record<AdminWhatsAppMessageType, string> = {
   invitation: "Invitation",
@@ -1154,6 +1160,7 @@ function RsvpView({
         lateResponses={snapshot.lateResponses}
         messageLogs={snapshot.messageLogs}
         showMeals
+        showNotes
         editableStatus
         onSnapshot={onSnapshot}
       />
@@ -1167,6 +1174,7 @@ function InvitationTable({
   lateResponses,
   messageLogs,
   showMeals = false,
+  showNotes = false,
   editableStatus = false,
   editableFlow = false,
   onEdit,
@@ -1178,6 +1186,8 @@ function InvitationTable({
   lateResponses: AdminSnapshot["lateResponses"];
   messageLogs: AdminMessageLog[];
   showMeals?: boolean;
+  /** SF-6: the group's RSVP note (message / dietary) under its guests. */
+  showNotes?: boolean;
   editableStatus?: boolean;
   editableFlow?: boolean;
   onEdit?: (invitation: InvitationGroup) => void;
@@ -1274,6 +1284,16 @@ function InvitationTable({
                     ) : null}
                   </p>
                 ))}
+                {showNotes && invitation.rsvp.message ? (
+                  // Whole words: the column widens instead of splitting
+                  // "Vegetarian" (admin <p> text otherwise breaks anywhere).
+                  <p
+                    className="muted"
+                    style={{ marginTop: 6, overflowWrap: "break-word" }}
+                  >
+                    Note: {invitation.rsvp.message}
+                  </p>
+                ) : null}
               </td>
               <td>{invitation.maxGuests}</td>
               <td>
@@ -2138,6 +2158,52 @@ function ContentView({
                     <option value="family">Family</option>
                   </select>
                 </label>
+                {/* SF-6: which RSVP form the link shows. */}
+                <label className="form-field">
+                  <span>Form</span>
+                  <select
+                    className="select"
+                    value={inviteType.form === "simple" ? "simple" : "standard"}
+                    onChange={(event) =>
+                      updatePublicInviteType(index, {
+                        form:
+                          event.target.value === "simple" ? "simple" : undefined,
+                      })
+                    }
+                  >
+                    <option value="standard">
+                      Standard (email code, events, meals)
+                    </option>
+                    <option value="simple">
+                      Simple (no email code; Yes = dinner reception)
+                    </option>
+                  </select>
+                </label>
+                {/* SF-6: optional custom address, matched exactly (case
+                    included). Blank stores no value (never ""). */}
+                <label className="form-field">
+                  <span>Custom address (case-sensitive, optional)</span>
+                  <input
+                    className="input"
+                    placeholder="e.g. JESSmarriED"
+                    value={inviteType.path ?? ""}
+                    onChange={(event) =>
+                      updatePublicInviteType(index, {
+                        path:
+                          event.target.value.replace(/[^A-Za-z0-9-]/g, "") ||
+                          undefined,
+                      })
+                    }
+                  />
+                  <small className="muted">
+                    {customAddressHint(
+                      inviteType.path,
+                      draft.publicInviteTypes
+                        .slice(0, index)
+                        .map((item) => item.path),
+                    )}
+                  </small>
+                </label>
                 <label className="form-field">
                   <span>Max guests</span>
                   <input
@@ -2276,7 +2342,15 @@ function ContentView({
                   />
                 </label>
               </div>
-              <PublicLinkShareHint inviteType={inviteType} />
+              <PublicLinkShareHint
+                inviteType={inviteType}
+                customPath={usableCustomAddress(
+                  inviteType.path,
+                  draft.publicInviteTypes
+                    .slice(0, index)
+                    .map((item) => item.path),
+                )}
+              />
               <InviteTypeFlowPreview inviteType={inviteType} />
             </div>
           ))}
@@ -3722,12 +3796,49 @@ function ExportView() {
   );
 }
 
+// SF-6: the custom address as it will be saved: undefined when blank,
+// invalid, a built-in route, or already used by an earlier link (the server
+// keeps the first one), like normalizePublicInviteTypes.
+function usableCustomAddress(
+  path: string | undefined,
+  earlierPaths: Array<string | undefined>,
+) {
+  if (!path || publicLinkPathProblem(path) || earlierPaths.includes(path)) {
+    return undefined;
+  }
+  return path;
+}
+
+// SF-6: the live preview under "Custom address", or why it won't be saved.
+function customAddressHint(
+  path: string | undefined,
+  earlierPaths: Array<string | undefined>,
+) {
+  if (!path) return "Blank: no custom address.";
+  const preview = `${PUBLIC_SITE_HOST}/${path}`;
+  const problem = publicLinkPathProblem(path);
+  if (problem === "format") {
+    return `${preview} — not saved: use 2–41 letters, numbers or dashes, starting with a letter or number.`;
+  }
+  if (problem === "reserved") {
+    return `${preview} — not saved: that address is a built-in page.`;
+  }
+  if (earlierPaths.includes(path)) {
+    return `${preview} — not saved: another link already uses it.`;
+  }
+  return `${preview} — opens this link (exact capitalisation only).`;
+}
+
 // DL-8: both share URLs for a public link: /invite/<CODE> and the short path
 // /<code-lowercase> (unless that path is taken by a built-in page).
+// SF-6: a custom address, when set, is listed first.
 function PublicLinkShareHint({
   inviteType,
+  customPath,
 }: {
   inviteType: PublicInviteType;
+  /** SF-6: the link's usable custom address (see usableCustomAddress). */
+  customPath?: string;
 }) {
   const code = inviteType.code;
   const invitePath = `/invite/${code}`;
@@ -3735,7 +3846,14 @@ function PublicLinkShareHint({
   const hasShortPath = !shortPath.startsWith("/invite/");
   return (
     <p className="muted" style={{ marginTop: 12 }}>
-      Share as {invitePath}
+      {customPath ? (
+        <>
+          Share as {PUBLIC_SITE_HOST}/{customPath} (custom address, exact
+          capitalisation). It also opens at {invitePath}
+        </>
+      ) : (
+        <>Share as {invitePath}</>
+      )}
       {hasShortPath ? <> or {shortPath}</> : null}.
       {hasShortPath
         ? null

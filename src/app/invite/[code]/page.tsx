@@ -15,6 +15,7 @@ import {
   normalizeInviteCode,
   toGuestContent,
   toGuestInvitation,
+  toLinkGuestContent,
 } from "@/lib/rsvp";
 
 export async function generateMetadata({
@@ -76,12 +77,10 @@ export default async function Page({
   const publicInviteType = findPublicInviteTypeByCode(content, normalizedCode);
   if (!invitation && publicInviteType) {
     // DL-7: public link -> that link's deadline; other link codes stripped.
+    // SF-3: no events in the payload for a simple-form link.
     return (
       <SelfRegisterInvitePage
-        content={toGuestContent(
-          content,
-          getEffectiveRsvpDeadline(content, { inviteType: publicInviteType }),
-        )}
+        content={toLinkGuestContent(content, publicInviteType)}
         inviteType={publicInviteType}
         initialLanguage={initialLanguage}
       />

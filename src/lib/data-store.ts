@@ -25,12 +25,17 @@ import type {
   RsvpHistoryItem,
   RsvpSubmission,
   SelfRegistrationSubmission,
+  SimpleRsvpSubmission,
   TravelPlan,
   TravelPlanSubmission,
   WeddingContent,
 } from "@/lib/types";
 import { discoverMedanSectionOrder } from "@/lib/discover-medan-content";
 import { isSupabaseConfigured } from "@/lib/env";
+import {
+  publicLinkPathProblem,
+  publicLinkShortPath,
+} from "@/lib/guest-navigation";
 import { normalizeImageCrop, normalizeImageCrops } from "@/lib/image-crop";
 import {
   buildNameInviteCode,
@@ -365,7 +370,7 @@ function normalizePublicInviteTypes(
     (inviteType) =>
       inviteType.id && !defaults.some((item) => item.id === inviteType.id),
   );
-  return [
+  const normalized = [
     ...normalizedDefaults,
     ...customTypes.map((inviteType, index) =>
       normalizePublicInviteType(inviteType, {
@@ -377,6 +382,18 @@ function normalizePublicInviteTypes(
       }),
     ),
   ];
+  // SF-1: a custom address opens one link only: the first link keeps it and
+  // later duplicates are dropped.
+  const usedPaths = new Set<string>();
+  return normalized.map((inviteType) => {
+    if (!inviteType.path) return inviteType;
+    if (!usedPaths.has(inviteType.path)) {
+      usedPaths.add(inviteType.path);
+      return inviteType;
+    }
+    const { path: _duplicatePath, ...withoutPath } = inviteType;
+    return withoutPath;
+  });
 }
 
 function normalizePublicInviteType(
@@ -395,6 +412,15 @@ function normalizePublicInviteType(
   // DL-3: keep a valid per-link deadline, drop blank/invalid ones (absent =
   // inherit the main deadline). The fallback's deadline is never inherited.
   const rsvpDeadline = normalizeDeadlineIso(inviteType.rsvpDeadline);
+  // SF-1: only the literal "simple" switches the form; anything else is the
+  // standard form (key absent). A custom address keeps its case and is
+  // dropped when invalid or a built-in route (never inherited either).
+  const form = inviteType.form === "simple" ? "simple" : undefined;
+  const path =
+    typeof inviteType.path === "string" &&
+    !publicLinkPathProblem(inviteType.path.trim())
+      ? inviteType.path.trim()
+      : undefined;
 
   return {
     id: inviteType.id || fallback.id,
@@ -419,6 +445,8 @@ function normalizePublicInviteType(
       id: inviteType.description?.id || fallback.description?.id || "",
     },
     ...(rsvpDeadline ? { rsvpDeadline } : {}),
+    ...(form ? { form } : {}),
+    ...(path ? { path } : {}),
   };
 }
 
@@ -1218,19 +1246,11 @@ export async function createSelfRegisteredInvitation(
   options: { reservedCodes?: string[] } = {},
 ) {
   const now = new Date().toISOString();
-  const idSeed =
-    submission.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "guest";
-  const id = `invite-self-${idSeed}-${Date.now()}`;
-  // DL-12: public link codes (defaults + the caller's published list) are
-  // reserved so a guest's name code can never shadow a link.
-  const code = buildNameInviteCode(
+  const id = selfRegisteredInvitationId(submission.name);
+  const code = await selfRegisteredInviteCode(
     submission.name,
-    await getExistingInvitationCodes(),
-    [
-      ...weddingContent.publicInviteTypes.map((item) => item.code),
-      ...(options.reservedCodes || []),
-      ...(inviteType ? [inviteType.code] : []),
-    ],
+    inviteType,
+    options.reservedCodes,
   );
   // DL-5: snapshot the link's deadline onto the invitation. Later edits to the
   // link deadline do not move guests who already registered.
@@ -1257,9 +1277,23 @@ export async function createSelfRegisteredInvitation(
     throw new Error("Please select at least one event you will attend.");
   }
 
+  // SF-4: B12 for every standard registration: an attending guest needs a
+  // meal. Only the simple form (createSimpleRegisteredInvitation) saves
+  // "unset" meals.
+  if (
+    submission.status === "attending" &&
+    guests.some(
+      (guest) =>
+        guest.mealPreference !== "vegetarian" &&
+        guest.mealPreference !== "non_vegetarian",
+    )
+  ) {
+    throw new Error("Please select a meal preference for every guest attending.");
+  }
+
   const status = submission.status;
 
-  let invitation: InvitationGroup = {
+  const invitation: InvitationGroup = {
     id,
     code,
     greeting: `Dear ${submission.name}`,
@@ -1289,6 +1323,125 @@ export async function createSelfRegisteredInvitation(
     guests,
     ...(linkDeadline ? { rsvpDeadline: linkDeadline } : {}),
   };
+
+  const saved = await saveSelfRegisteredInvitation(invitation, {
+    now,
+    mealFallback: submission.mealPreference,
+  });
+  return saved.invitation;
+}
+
+/**
+ * SF-4: a registration from the simple form (no email code). "Yes" = the
+ * dinner reception only; the registrant plus auto-named extra seats like the
+ * headcount mode; meals stay "unset" (the form doesn't ask, so B12 does not
+ * apply); a dietary note becomes the RSVP message. Saved through the same
+ * insert and retries as any self-registration. `existing` = the email was
+ * already registered (unique-index race): nothing new was saved.
+ */
+export async function createSimpleRegisteredInvitation(
+  submission: SimpleRsvpSubmission,
+  inviteType: PublicInviteType,
+  options: { reservedCodes?: string[] } = {},
+) {
+  const now = new Date().toISOString();
+  const name = submission.name.trim();
+  const id = selfRegisteredInvitationId(name);
+  const code = await selfRegisteredInviteCode(
+    name,
+    inviteType,
+    options.reservedCodes,
+  );
+  const status = submission.attending ? "attending" : "declined";
+  const guestNames = buildSelfRegisteredGuestNames({
+    name,
+    status,
+    guestCount: submission.attending ? submission.guestCount : 1,
+  });
+  // DL-5: the link's deadline (or No deadline) is snapshotted as usual.
+  const linkDeadline = normalizeDeadlineIso(inviteType.rsvpDeadline);
+  const dietary = submission.dietary?.trim();
+  const address = inviteType.path
+    ? `/${inviteType.path}`
+    : publicLinkShortPath(inviteType.code, inviteType.id);
+
+  const invitation: InvitationGroup = {
+    id,
+    code,
+    greeting: `Dear ${name}`,
+    groupName: name,
+    phone: submission.phone,
+    email: submission.email,
+    maxGuests: inviteType.maxGuests,
+    side: "joint",
+    source: "generic",
+    flow: "generic",
+    privateNotes: {
+      en: `Registered through the simple form (${address}).`,
+      id: `Mendaftar melalui formulir sederhana (${address}).`,
+    },
+    eligibleEvents: ["dinner"],
+    openedAt: now,
+    rsvp: {
+      id: `rsvp-${id}`,
+      invitationGroupId: id,
+      status,
+      eventAttendance: submission.attending ? { dinner: true } : {},
+      message: dietary ? `Dietary: ${dietary}` : undefined,
+      submittedAt: now,
+      updatedAt: now,
+      updatedBy: "guest",
+    },
+    guests: guestNames.map((guestName, index) => ({
+      id: `${id}-guest-${index + 1}`,
+      invitationGroupId: id,
+      name: guestName,
+      mealPreference: "unset",
+    })),
+    ...(linkDeadline ? { rsvpDeadline: linkDeadline } : {}),
+  };
+
+  return saveSelfRegisteredInvitation(invitation, {
+    now,
+    mealFallback: "unset",
+  });
+}
+
+// SF-4: shared by both self-registration builders.
+function selfRegisteredInvitationId(name: string) {
+  const idSeed = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "guest";
+  return `invite-self-${idSeed}-${Date.now()}`;
+}
+
+// DL-12: public link codes (defaults + the caller's published list) are
+// reserved so a guest's name code can never shadow a link.
+async function selfRegisteredInviteCode(
+  name: string,
+  inviteType: PublicInviteType | undefined,
+  reservedCodes: string[] = [],
+) {
+  return buildNameInviteCode(name, await getExistingInvitationCodes(), [
+    ...weddingContent.publicInviteTypes.map((item) => item.code),
+    ...reservedCodes,
+    ...(inviteType ? [inviteType.code] : []),
+  ]);
+}
+
+/**
+ * SF-4: saves a self-registration built by createSelfRegisteredInvitation or
+ * createSimpleRegisteredInvitation: one copy of the insert, the code-collision
+ * and legacy-schema retries, and the history row. `existing` is true only when
+ * the email+flow unique index already held this guest (B5); that stored
+ * invitation is returned instead.
+ */
+async function saveSelfRegisteredInvitation(
+  draft: InvitationGroup,
+  {
+    now,
+    mealFallback,
+  }: { now: string; mealFallback: Guest["mealPreference"] },
+): Promise<{ invitation: InvitationGroup; existing: boolean }> {
+  let invitation = draft;
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
@@ -1361,12 +1514,12 @@ export async function createSelfRegisteredInvitation(
     }
     if (error) {
       // B5: on email uniqueness conflict, re-query by email+flow and return existing
-      if (error.code === "23505" && submission.email) {
+      if (error.code === "23505" && invitation.email) {
         const existing = await getInvitationByVerifiedEmail(
-          submission.email,
+          invitation.email,
           invitation.flow,
         );
-        if (existing) return existing;
+        if (existing) return { invitation: existing, existing: true };
       }
       // B6: on code unique-violation, regenerate with numeric suffix and retry up to 3 times
       if (error.code === "23505") {
@@ -1452,7 +1605,7 @@ export async function createSelfRegisteredInvitation(
         id: String(guest.id),
         invitationGroupId: invitation.id,
         name: String(guest.name),
-        mealPreference: guest.meal_preference || submission.mealPreference,
+        mealPreference: guest.meal_preference || mealFallback,
       }));
     }
 
@@ -1478,10 +1631,15 @@ export async function createSelfRegisteredInvitation(
     });
   }
 
-  return invitation;
+  return { invitation, existing: false };
 }
 
-function buildSelfRegisteredGuestNames(submission: SelfRegistrationSubmission) {
+function buildSelfRegisteredGuestNames(
+  submission: Pick<
+    SelfRegistrationSubmission,
+    "name" | "status" | "guestCount" | "guestNames"
+  >,
+) {
   if (submission.status === "declined") return [submission.name.trim()];
   const provided = (submission.guestNames || [])
     .map((name) => name.trim())
