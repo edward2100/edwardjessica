@@ -234,11 +234,26 @@ export function toGuestInvitation(invitation: InvitationGroup): InvitationGroup 
 // CL-8: whole days left to RSVP (rounded up, at least 1), or null once RSVP
 // is closed. Built on isRsvpClosed so the countdown hides exactly when the
 // closed state starts (no gap at the deadline instant).
+// ND-1: "No deadline" for a public link or one invitation, stored as a
+// far-future instant so it rides on the existing deadline fields (content
+// JSON and invitation_groups.rsvp_deadline) with no migration. Never closes,
+// and guest pages show no "RSVP by" date or countdown for it.
+export const NO_RSVP_DEADLINE = "9999-12-31T23:59:59.000Z";
+const NO_DEADLINE_FROM = Date.parse("9999-01-01T00:00:00.000Z");
+
+export function isNoRsvpDeadline(deadlineIso: string | null | undefined) {
+  if (!deadlineIso) return false;
+  const time = Date.parse(deadlineIso);
+  return Number.isFinite(time) && time >= NO_DEADLINE_FROM;
+}
+
 export function getRsvpDaysLeft(
   deadlineIso: string,
   now = new Date(),
 ): number | null {
   if (isRsvpClosed(deadlineIso, now)) return null;
+  // ND-1: no countdown when there is no deadline.
+  if (isNoRsvpDeadline(deadlineIso)) return null;
   const msLeft = new Date(deadlineIso).getTime() - now.getTime();
   if (!Number.isFinite(msLeft)) return null;
   return Math.max(1, Math.ceil(msLeft / (1000 * 60 * 60 * 24)));
@@ -812,7 +827,10 @@ export function buildAdminWhatsAppMessage({
   // don't promise updates until a date in the past.
   const updateLine = isRsvpClosed(effectiveDeadline, now)
     ? "If anything changes, just reply to this message."
-    : `You may update your RSVP until ${deadline}.`;
+    : isNoRsvpDeadline(effectiveDeadline)
+      ? // ND-1: no date to promise.
+        "You can update your RSVP any time from your invitation link."
+      : `You may update your RSVP until ${deadline}.`;
 
   if (messageType === "rsvp_confirmation") {
     return `${invitation.greeting}

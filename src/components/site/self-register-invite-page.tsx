@@ -42,7 +42,12 @@ import {
   rsvpCountdownText,
   text,
 } from "@/lib/i18n";
-import { getRsvpDaysLeft, getRsvpWindow, hasRsvpContact } from "@/lib/rsvp";
+import {
+  getRsvpDaysLeft,
+  getRsvpWindow,
+  hasRsvpContact,
+  isNoRsvpDeadline,
+} from "@/lib/rsvp";
 import { useGuestLanguage } from "@/lib/use-guest-language";
 import { useRsvpWindow } from "@/lib/use-rsvp-closed";
 import type {
@@ -720,7 +725,10 @@ export function SelfRegisterInvitePage({
                     <p className="muted" style={{ marginTop: 14 }}>
                       {savedInvitation
                         ? c.receivedRsvp
-                        : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
+                        : isNoRsvpDeadline(content.rsvpDeadline)
+                          ? // ND-1: no "RSVP by" date on a no-deadline link.
+                            c.reviewBeforeRsvp
+                          : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
                     </p>
                     {/* Countdown line */}
                     <SelfRegRsvpCountdownLine
