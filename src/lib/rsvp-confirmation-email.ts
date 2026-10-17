@@ -1,5 +1,6 @@
 import { getSiteUrl } from "@/lib/env";
-import { text } from "@/lib/i18n";
+import { copy, text } from "@/lib/i18n";
+import { normalizeWhatsAppUrl } from "@/lib/rsvp";
 import type {
   InvitationGroup,
   Language,
@@ -136,11 +137,129 @@ export function buildRsvpConfirmationEmail({
   return { subject, html, inviteUrl };
 }
 
+// SF-5: the simple-form email in the guest's language.
+const simpleEmailCopy = {
+  en: {
+    subjectAttending: "Your RSVP for Edward & Jessica's wedding",
+    subjectDeclined: "We received your RSVP for Edward & Jessica's wedding",
+    heading: "We received your RSVP",
+    greeting: "Hi {name},",
+    attendingOne:
+      "Thank you for letting us know you're coming. We've received your RSVP for 1 person.",
+    attendingMany:
+      "Thank you for letting us know you're coming. We've received your RSVP for {count} people.",
+    declined:
+      "Thank you for letting us know you can't make it — we'll miss you.",
+    late: "Since this came after our RSVP date, we'll confirm your place with you.",
+    dietary: "Dietary requirements",
+    date: "Date",
+    venue: "Venue",
+    map: "Open in Google Maps",
+    change: "To change anything, message Edward or Jessica on WhatsApp or Telegram.",
+    whatsapp: "Message us on WhatsApp",
+    signOff: "With love,",
+  },
+  id: {
+    subjectAttending: "RSVP Anda untuk pernikahan Edward & Jessica",
+    subjectDeclined:
+      "Kami telah menerima RSVP Anda untuk pernikahan Edward & Jessica",
+    heading: "RSVP Anda sudah kami terima",
+    greeting: "Halo {name},",
+    // Same wording for 1 (Indonesian has no plural form)
+    attendingOne:
+      "Terima kasih atas kabar baiknya. Kami telah menerima RSVP Anda untuk 1 orang.",
+    attendingMany:
+      "Terima kasih atas kabar baiknya. Kami telah menerima RSVP Anda untuk {count} orang.",
+    declined:
+      "Terima kasih sudah mengabari kami bahwa Anda tidak dapat hadir — kami akan merindukan Anda.",
+    late: "Karena RSVP ini kami terima setelah batas waktu, kami akan menghubungi Anda untuk memastikan tempat Anda.",
+    dietary: "Kebutuhan makanan khusus",
+    date: "Tanggal",
+    venue: "Tempat",
+    map: "Buka di Google Maps",
+    change:
+      "Jika ada yang perlu diubah, silakan kabari Edward atau Jessica melalui WhatsApp atau Telegram.",
+    whatsapp: "Hubungi kami via WhatsApp",
+    signOff: "Salam hangat,",
+  },
+} as const;
+
+/**
+ * SF-5: confirmation for the simple form. Only the date and the venue (with
+ * its map link): no event names or times, no calendar, no invite link, since
+ * these guests are invited to the dinner reception only.
+ */
+export function buildSimpleRsvpEmail({
+  content,
+  invitation,
+  language = "en",
+  dietary,
+  late = false,
+}: {
+  content: WeddingContent;
+  invitation: InvitationGroup;
+  language?: Language;
+  dietary?: string;
+  /** LR-2: saved in the late window (after the link's RSVP deadline). */
+  late?: boolean;
+}) {
+  const t = simpleEmailCopy[language];
+  const labels = copy[language];
+  const attending = invitation.rsvp.status === "attending";
+  const people = invitation.guests.length || 1;
+  const statusLine = !attending
+    ? t.declined
+    : people === 1
+      ? t.attendingOne
+      : t.attendingMany.replace("{count}", String(people));
+  const note = dietary?.trim();
+  const whatsappUrl = normalizeWhatsAppUrl(content.rsvpContact?.whatsappUrl);
+  const mapsUrl = content.venue.mapsUrl;
+
+  const subject = attending ? t.subjectAttending : t.subjectDeclined;
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #2f2924; line-height: 1.55; max-width: 620px; margin: 0 auto;">
+      <p style="letter-spacing: 0.18em; text-transform: uppercase; color: #aa7e52; font-weight: 700;">Edward & Jessica</p>
+      <h1 style="font-family: Georgia, serif; font-size: 32px; line-height: 1.1; margin: 12px 0;">${escapeHtml(t.heading)}</h1>
+      <p>${escapeHtml(t.greeting.replace("{name}", invitation.groupName))}</p>
+      <p>${escapeHtml(statusLine)}</p>${
+        late && attending ? `\n      <p>${escapeHtml(t.late)}</p>` : ""
+      }${
+        note
+          ? `\n      <p><strong>${escapeHtml(t.dietary)}:</strong> ${escapeHtml(note)}</p>`
+          : ""
+      }
+
+      <h2 style="font-size: 18px; margin-top: 28px;">${escapeHtml(t.date)}</h2>
+      <p>${escapeHtml(`${labels.weddingDay}, ${labels.weddingDate}`)}</p>
+
+      <h2 style="font-size: 18px; margin-top: 28px;">${escapeHtml(t.venue)}</h2>
+      <p>${escapeHtml(`${labels.weddingVenueName}, ${labels.weddingVenueCity}`)}</p>${
+        mapsUrl
+          ? `\n      <p><a href="${escapeHtml(mapsUrl)}" style="color: #8f633a; font-weight: 700;">${escapeHtml(t.map)}</a></p>`
+          : ""
+      }
+
+      <p style="margin-top: 28px;">${escapeHtml(t.change)}</p>${
+        whatsappUrl
+          ? `\n      <p><a href="${escapeHtml(whatsappUrl)}" style="color: #8f633a; font-weight: 700;">${escapeHtml(t.whatsapp)}</a></p>`
+          : ""
+      }
+      <p>${escapeHtml(t.signOff)}<br/>Edward & Jessica</p>
+    </div>
+  `;
+
+  return { subject, html };
+}
+
 export async function sendRsvpConfirmationEmail({
   content,
   invitation,
   late = false,
   to,
+  kind = "standard",
+  language = "en",
+  dietary,
 }: {
   content: WeddingContent;
   invitation: InvitationGroup;
@@ -148,6 +267,12 @@ export async function sendRsvpConfirmationEmail({
   late?: boolean;
   /** AE-1: send to this address instead of the group's email (admin sends). */
   to?: string;
+  /** SF-5: "simple" = the simple-form email (date and venue only). */
+  kind?: "standard" | "simple";
+  /** SF-5: the guest's page language (simple email only). */
+  language?: Language;
+  /** SF-5: the dietary note the guest typed (simple email only). */
+  dietary?: string;
 }): Promise<RsvpEmailResult> {
   const recipient = to || invitation.email;
   if (!recipient) {
@@ -164,11 +289,14 @@ export async function sendRsvpConfirmationEmail({
     "Edward & Jessica RSVP <rsvp@edwardjessica.com>";
   const replyTo =
     process.env.RSVP_EMAIL_REPLY_TO || "rsvp@edwardjessica.com";
-  const { subject, html } = buildRsvpConfirmationEmail({
-    content,
-    invitation,
-    late,
-  });
+  const { subject, html } =
+    kind === "simple"
+      ? buildSimpleRsvpEmail({ content, invitation, language, dietary, late })
+      : buildRsvpConfirmationEmail({
+          content,
+          invitation,
+          late,
+        });
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",

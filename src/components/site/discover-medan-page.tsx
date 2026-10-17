@@ -28,6 +28,7 @@ export function DiscoverMedanPage({
   flow,
   invitation,
   linkCode,
+  linkPath,
   initialLanguage,
 }: {
   content: WeddingContent;
@@ -35,6 +36,8 @@ export function DiscoverMedanPage({
   invitation?: InvitationGroup | null;
   /** DL-9: custom public link code (validated server-side) for back-links. */
   linkCode?: string;
+  /** SF-2: that link's custom address (e.g. "JESSmarriED"), if it has one. */
+  linkPath?: string;
   /** Saved language from the ej_language cookie, so SSR matches hydration. */
   initialLanguage?: Language | null;
 }) {
@@ -53,7 +56,7 @@ export function DiscoverMedanPage({
       <GuestMenu
         discoverHref={discoverMedanHref(activeCode, activeFlow, linkCode)}
         flow={activeFlow}
-        invitationHref={invitationHref(activeCode, activeFlow, linkCode)}
+        invitationHref={invitationHref(activeCode, activeFlow, linkCode, linkPath)}
         language={language}
         travelHref={travelAccommodationHref(activeCode, activeFlow, linkCode)}
       />

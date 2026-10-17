@@ -24,12 +24,20 @@ export function PhoneCountryInput({
   onChange,
   required = false,
   value,
+  labelId,
+  invalid,
+  describedBy,
 }: {
   id: string;
   label: string;
   onChange: (phone: string) => void;
   required?: boolean;
   value: string;
+  /** SF-3: names the number input after the visible label (opt-in). */
+  labelId?: string;
+  /** SF-3: inline error state for the number input (opt-in). */
+  invalid?: boolean;
+  describedBy?: string;
 }) {
   const [countryCode, setCountryCode] = useState("+62");
   const [manualCountryCode, setManualCountryCode] = useState("");
@@ -65,7 +73,7 @@ export function PhoneCountryInput({
 
   return (
     <div className="form-field">
-      <span>{label}</span>
+      <span id={labelId}>{label}</span>
       <div className="phone-input-grid">
         <select
           aria-label="Country code"
@@ -95,6 +103,9 @@ export function PhoneCountryInput({
           className="input"
           id={id}
           inputMode="tel"
+          aria-labelledby={labelId}
+          aria-invalid={invalid || undefined}
+          aria-describedby={describedBy}
           value={localNumber}
           onChange={(event) => setLocalNumber(event.target.value)}
           required={required}

@@ -74,6 +74,8 @@ export default async function Page({
       // CL-11: allowlisted fields only (no email / phone / privateNotes).
       invitation={invitation ? toGuestInvitation(invitation) : null}
       linkCode={invitation ? undefined : customPublicLinkCode(linkType)}
+      // SF-2: back links return to the link's custom address when it has one.
+      linkPath={invitation ? undefined : linkType?.path}
       initialLanguage={initialLanguage}
     />
   );

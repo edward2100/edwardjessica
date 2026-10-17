@@ -209,6 +209,18 @@ export interface PublicInviteType {
    * this link (snapshot), so later link edits do not move existing guests.
    */
   rsvpDeadline?: string;
+  /**
+   * SF-1: "simple" = no email code; name, WhatsApp, email, yes/no, number of
+   * people and an optional dietary note ("Yes" = the dinner reception only).
+   * Absent = the standard form (email code, events, meals).
+   */
+  form?: "simple";
+  /**
+   * SF-1: optional custom short address, matched CASE-SENSITIVELY at the site
+   * root before the case-insensitive code routing ("JESSmarriED" ->
+   * /JESSmarriED). Unique across links; never a built-in route.
+   */
+  path?: string;
 }
 
 export interface MediaAsset {
@@ -304,6 +316,22 @@ export interface SelfRegistrationSubmission {
   status: Exclude<RsvpStatus, "pending">;
   eventAttendance: Partial<Record<EventKey, boolean>>;
   message?: string;
+}
+
+/** SF-4: a validated POST /api/rsvp/simple body. */
+export interface SimpleRsvpSubmission {
+  accessCode: string;
+  name: string;
+  phone: string;
+  email: string;
+  attending: boolean;
+  /** 1..link maxGuests; always 1 for a "No". */
+  guestCount: number;
+  dietary?: string;
+  /** Honeypot: people never fill it. */
+  website?: string;
+  /** The page language, used for the confirmation email. */
+  language: Language;
 }
 
 export interface TravelPlanSubmission {

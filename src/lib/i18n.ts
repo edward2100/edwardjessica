@@ -192,6 +192,31 @@ export const copy = {
     // Travel submitted
     travelSubmittedNote: "Your travel plans have been received.",
     updateTravelPlans: "Update travel plans",
+    // SF-3: the simple RSVP form (no email code; "Yes" = the dinner reception)
+    simpleFormTitle: "Will you join us?",
+    simpleWhatsApp: "WhatsApp number",
+    simpleWillYouAttend: "Will you attend?",
+    simpleYes: "Yes, I'll attend",
+    simpleNo: "Sorry, I can't",
+    simpleHowMany: "How many people, including you?",
+    simpleDietary: "Dietary requirements (optional)",
+    simpleDietaryPlaceholder: "e.g. Vegetarian",
+    simpleErrorName: "Please enter your name.",
+    simpleErrorPhone: "Please enter your WhatsApp number.",
+    simpleErrorEmail: "Please enter a valid email address.",
+    simpleErrorAttending: "Please let us know if you can attend.",
+    simpleErrorCount: "Please choose how many people are coming.",
+    simpleThankYou: "Thank you, {name}!",
+    simpleReceivedOne: "We've received your RSVP for 1 person.",
+    simpleReceivedMany: "We've received your RSVP for {count} people.",
+    simpleDeclined: "Thank you for letting us know — we'll miss you.",
+    simpleChange: "Need to change anything? Message us on WhatsApp.",
+    simpleChangeNoWhatsApp:
+      "Need to change anything? Please contact Edward or Jessica.",
+    simpleExisting:
+      "We already have an RSVP for this email. To change it, message us on WhatsApp.",
+    simpleExistingNoWhatsApp:
+      "We already have an RSVP for this email. To change it, please contact Edward or Jessica.",
   },
   id: {
     weddingOf: "Pernikahan",
@@ -373,6 +398,32 @@ export const copy = {
     // Travel submitted — ID NEEDS REVIEW by Edward
     travelSubmittedNote: "Rencana perjalanan Anda telah kami terima.",
     updateTravelPlans: "Perbarui rencana perjalanan",
+    // SF-3: the simple RSVP form (no email code; "Ya" = resepsi makan malam)
+    simpleFormTitle: "Apakah Anda akan hadir?",
+    simpleWhatsApp: "Nomor WhatsApp",
+    simpleWillYouAttend: "Apakah Anda dapat hadir?",
+    simpleYes: "Ya, saya hadir",
+    simpleNo: "Maaf, tidak bisa",
+    simpleHowMany: "Berapa orang yang akan hadir, termasuk Anda?",
+    simpleDietary: "Kebutuhan makanan khusus (opsional)",
+    simpleDietaryPlaceholder: "mis. Vegetarian",
+    simpleErrorName: "Mohon isi nama Anda.",
+    simpleErrorPhone: "Mohon isi nomor WhatsApp Anda.",
+    simpleErrorEmail: "Mohon isi alamat email yang valid.",
+    simpleErrorAttending: "Mohon beri tahu kami apakah Anda dapat hadir.",
+    simpleErrorCount: "Mohon pilih jumlah orang yang akan hadir.",
+    simpleThankYou: "Terima kasih, {name}!",
+    // Same wording as the plural (Indonesian has no plural form)
+    simpleReceivedOne: "Kami telah menerima RSVP Anda untuk 1 orang.",
+    simpleReceivedMany: "Kami telah menerima RSVP Anda untuk {count} orang.",
+    simpleDeclined: "Terima kasih sudah mengabari kami — kami akan merindukan Anda.",
+    simpleChange: "Ada yang perlu diubah? Kabari kami lewat WhatsApp.",
+    simpleChangeNoWhatsApp:
+      "Ada yang perlu diubah? Silakan hubungi Edward atau Jessica.",
+    simpleExisting:
+      "Kami sudah menerima RSVP untuk email ini. Untuk mengubahnya, kabari kami lewat WhatsApp.",
+    simpleExistingNoWhatsApp:
+      "Kami sudah menerima RSVP untuk email ini. Untuk mengubahnya, silakan hubungi Edward atau Jessica.",
   },
 } as const;
 
@@ -381,6 +432,13 @@ export function guestCountHintText(language: Language, count: number) {
   const c = copy[language];
   if (count === 1) return c.guestCountHintOne;
   return c.guestCountHint.replace("{count}", String(count));
+}
+
+// SF-3: the simple form's "received" line; singular for 1 person.
+export function simpleReceivedText(language: Language, count: number) {
+  const c = copy[language];
+  if (count === 1) return c.simpleReceivedOne;
+  return c.simpleReceivedMany.replace("{count}", String(count));
 }
 
 // LR-4: fills {until} in a late-RSVP template with " until 3 November 2026"

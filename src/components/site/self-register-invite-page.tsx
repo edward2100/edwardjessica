@@ -27,6 +27,11 @@ import { PhoneCountryInput } from "@/components/site/phone-country-input";
 import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
 import { BrideGroomSection } from "@/components/site/bride-groom-section";
 import { SaveDateSection } from "@/components/site/save-date-section";
+import {
+  SimpleRsvpForm,
+  SimpleRsvpSuccess,
+  type SimpleRsvpOutcome,
+} from "@/components/site/simple-rsvp-form";
 import { SlotImage } from "@/components/site/slot-image";
 import { StorySection } from "@/components/site/story-section";
 import {
@@ -47,6 +52,7 @@ import {
   getRsvpWindow,
   hasRsvpContact,
   isNoRsvpDeadline,
+  isSimplePublicInviteType,
 } from "@/lib/rsvp";
 import { useGuestLanguage } from "@/lib/use-guest-language";
 import { useRsvpWindow } from "@/lib/use-rsvp-closed";
@@ -94,13 +100,22 @@ export function SelfRegisterInvitePage({
 
   const c = copy[language];
   const activeCode = savedInvitation?.code;
+  // SF-3: the simple form (no email code, Yes = the dinner reception). Its
+  // page shows no event times: no Schedule section, no calendar button.
+  const isSimpleForm = isSimplePublicInviteType(inviteType);
+  // SF-3: what the simple form's success screen shows once it is sent.
+  const [simpleOutcome, setSimpleOutcome] = useState<SimpleRsvpOutcome | null>(
+    null,
+  );
   // DL-9: until the guest has a personal code, menu + Discover/Travel links
   // keep a custom link's identity (its short path) instead of /jessmarried.
+  // SF-2: a link with a custom address returns to that exact address.
   const linkCode = customPublicLinkCode(inviteType);
   const currentInvitationHref = invitationHref(
     activeCode,
     inviteType.flow,
     linkCode,
+    inviteType.path,
   );
   const currentTravelHref = travelAccommodationHref(
     activeCode,
@@ -165,7 +180,8 @@ export function SelfRegisterInvitePage({
     // LR-4: one email check at a time — the late RSVP form replaces an open
     // "Already registered?" lookup.
     setClosedLookup("idle");
-    void resolveExistingSession();
+    // SF-3: the simple form has no email session to resolve (no redirect).
+    if (!isSimpleForm) void resolveExistingSession();
     window.setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 40);
@@ -246,6 +262,19 @@ export function SelfRegisterInvitePage({
         invitation.code,
       );
     }
+    window.setTimeout(() => {
+      document
+        .getElementById("self-rsvp-success")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 40);
+  }
+
+  // SF-3: the simple form was sent: its success screen replaces the form.
+  function openSimpleOutcome(outcome: SimpleRsvpOutcome) {
+    setSimpleOutcome(outcome);
+    setLateSaved(outcome.kind === "saved" && outcome.late);
+    setRsvpJustSaved(true);
+    setShowRsvpForm(false);
     window.setTimeout(() => {
       document
         .getElementById("self-rsvp-success")
@@ -416,7 +445,8 @@ export function SelfRegisterInvitePage({
       if (window.location.hash !== "#rsvp") return;
       setHasOpenedInvitation(true);
       setShowRsvpForm(true);
-      void resolveExistingSession();
+      // SF-3: no session lookup for the simple form.
+      if (!isSimpleForm) void resolveExistingSession();
       window.setTimeout(() => {
         // CL-9: when RSVP is closed there is no form; land on the section.
         (formRef.current ?? document.getElementById("rsvp"))?.scrollIntoView({
@@ -514,9 +544,16 @@ export function SelfRegisterInvitePage({
 
       <BrideGroomSection content={content} language={language} />
 
-      <SaveDateSection content={content} labels={c} />
+      {/* SF-3: no calendar button on the simple form's page (the .ics has
+          the event times). */}
+      <SaveDateSection
+        content={content}
+        labels={c}
+        showCalendarButton={!isSimpleForm}
+      />
 
-      {content.events.length ? (
+      {/* SF-3: no Schedule (event start times) on the simple form's page. */}
+      {content.events.length && !isSimpleForm ? (
         <section className="section">
           <div className="page-shell">
             <div className="section-heading section-heading-centered">
@@ -618,8 +655,9 @@ export function SelfRegisterInvitePage({
                     contact={content.rsvpContact}
                     language={language}
                   />
-                  {/* CL-7: returning guests can still reach their invite. */}
-                  {closedLookup === "idle" ? (
+                  {/* CL-7: returning guests can still reach their invite.
+                      SF-3: not on the simple form (it needs the email code). */}
+                  {closedLookup === "idle" && !isSimpleForm ? (
                     <button
                       className="button button-muted"
                       type="button"
@@ -696,7 +734,7 @@ export function SelfRegisterInvitePage({
                         contact={content.rsvpContact}
                         language={language}
                       />
-                      {closedLookup === "idle" ? (
+                      {closedLookup === "idle" && !isSimpleForm ? (
                         <button
                           className="button button-muted"
                           type="button"
@@ -749,6 +787,17 @@ export function SelfRegisterInvitePage({
                 </div>
               ) : null}
 
+              {/* SF-3: the simple form's success screen. */}
+              {rsvpJustSaved && simpleOutcome ? (
+                <div id="self-rsvp-success" style={{ marginTop: 24 }}>
+                  <SimpleRsvpSuccess
+                    content={content}
+                    language={language}
+                    outcome={simpleOutcome}
+                  />
+                </div>
+              ) : null}
+
               {/* Success card shown immediately after registration */}
               {rsvpJustSaved && savedInvitation ? (
                 <div id="self-rsvp-success" style={{ marginTop: 24 }}>
@@ -776,7 +825,26 @@ export function SelfRegisterInvitePage({
                 </p>
               ) : null}
 
-              {showRsvpForm && !rsvpJustSaved ? (
+              {/* SF-3: "Confirm Attendance" opens the simple form directly
+                  (no email code). */}
+              {showRsvpForm && !rsvpJustSaved && isSimpleForm ? (
+                <div
+                  ref={formRef}
+                  id="self-rsvp-form"
+                  style={{ marginTop: 24, maxWidth: 620 }}
+                >
+                  <SimpleRsvpForm
+                    content={content}
+                    inviteType={inviteType}
+                    language={language}
+                    late={rsvpWindow === "late"}
+                    onClosed={handleRsvpClosedByServer}
+                    onSaved={openSimpleOutcome}
+                  />
+                </div>
+              ) : null}
+
+              {showRsvpForm && !rsvpJustSaved && !isSimpleForm ? (
                 <div
                   ref={formRef}
                   id="self-rsvp-form"

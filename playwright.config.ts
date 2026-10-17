@@ -6,6 +6,7 @@ import {
 } from "./tests/e2e/e2e-env";
 
 const LATE_RSVP_SPEC = /late-rsvp\.spec\.ts$/;
+const SIMPLE_RSVP_SPEC = /simple-rsvp\.spec\.ts$/;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -40,13 +41,13 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["setup"],
-      testIgnore: LATE_RSVP_SPEC
+      testIgnore: [LATE_RSVP_SPEC, SIMPLE_RSVP_SPEC]
     },
     {
       name: "mobile",
       use: { ...devices["iPhone 14"] },
       dependencies: ["setup"],
-      testIgnore: LATE_RSVP_SPEC
+      testIgnore: [LATE_RSVP_SPEC, SIMPLE_RSVP_SPEC]
     },
     // LR-5: publishes a deadline in the past, which every other spec on the
     // shared in-memory server would see, so it runs alone after both browser
@@ -56,6 +57,14 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["chromium", "mobile"],
       testMatch: LATE_RSVP_SPEC
+    },
+    // SF-7: publishes a simple link at /JESSmarriED, which every page would
+    // see, so it also runs alone, after late-rsvp (and restores the content).
+    {
+      name: "simple-rsvp",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["late-rsvp"],
+      testMatch: SIMPLE_RSVP_SPEC
     }
   ]
 });

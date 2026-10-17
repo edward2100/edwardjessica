@@ -3,6 +3,7 @@ import type {
   AdminWhatsAppMessageType,
   EventKey,
   InvitationGroup,
+  Language,
   LateResponse,
   LateRsvpSetting,
   MealPreference,
@@ -59,6 +60,35 @@ export function findPublicInviteTypeByCode(
       inviteType.isEnabled &&
       normalizeInviteCode(inviteType.code) === normalized,
   );
+}
+
+// SF-2: the ENABLED link whose custom address is exactly `path`
+// (case-sensitive: "JESSmarriED" never matches "JESSMARRIED").
+export function findPublicInviteTypeByPath(
+  content: WeddingContent,
+  path: string,
+) {
+  if (!path) return undefined;
+  return content.publicInviteTypes.find(
+    (inviteType) => inviteType.isEnabled && inviteType.path === path,
+  );
+}
+
+// SF-2: the link a root address opens (/JESSmarriED, /family-and-friends):
+// first an enabled link whose custom address matches EXACTLY, otherwise the
+// case-insensitive code match as before (/JESSMARRIED -> the general link).
+export function resolvePublicLinkSlug(content: WeddingContent, slug: string) {
+  return (
+    findPublicInviteTypeByPath(content, slug) ??
+    findPublicInviteTypeByCode(content, slug)
+  );
+}
+
+// SF-3: whether a link uses the simple form (no email code, Yes = dinner).
+export function isSimplePublicInviteType(
+  inviteType: Pick<PublicInviteType, "form"> | null | undefined,
+) {
+  return inviteType?.form === "simple";
 }
 
 export function getPublicInviteTypeById(content: WeddingContent, id: string) {
@@ -203,6 +233,22 @@ export function toGuestContent(
     rsvpDeadline: effectiveDeadline,
     publicInviteTypes: [],
   };
+}
+
+// SF-3: the guest content for a public link's page (DL-7 above with the
+// link's own deadline). A simple-form link also gets no events, so event
+// names and times never reach its guests, not even in the page data.
+export function toLinkGuestContent(
+  content: WeddingContent,
+  inviteType: PublicInviteType,
+): WeddingContent {
+  const guestContent = toGuestContent(
+    content,
+    getEffectiveRsvpDeadline(content, { inviteType }),
+  );
+  return isSimplePublicInviteType(inviteType)
+    ? { ...guestContent, events: [] }
+    : guestContent;
 }
 
 // CL-11: the invitation fields guest pages may serialize into the browser.
@@ -385,6 +431,66 @@ export function validateSelfRegistration(
   payload: unknown,
 ): SelfRegistrationSubmission {
   return selfRegistrationSchema.parse(payload);
+}
+
+// SF-4: the longest dietary note kept from the simple form.
+export const SIMPLE_DIETARY_MAX_LENGTH = 200;
+
+/**
+ * SF-4: the simple form's fields, shared by the form (inline errors) and
+ * POST /api/rsvp/simple. A "No" is always 1 person, whatever count was sent;
+ * a "Yes" is 1..the link's maxGuests. The email must be one plain address
+ * (normalizeContactEmail); a blank dietary note is dropped.
+ */
+export function simpleRsvpSchema(maxGuests: number) {
+  const limit = Math.min(10, Math.max(1, Math.floor(Number(maxGuests)) || 1));
+  const phoneMessage = "Please enter your WhatsApp number.";
+  return z.preprocess(
+    (value) =>
+      value &&
+      typeof value === "object" &&
+      (value as Record<string, unknown>).attending === false
+        ? { ...(value as Record<string, unknown>), guestCount: 1 }
+        : value,
+    z.object({
+      accessCode: z.string().trim().min(1),
+      name: z.string().trim().min(1, "Please enter your name.").max(120),
+      phone: z
+        .string()
+        .trim()
+        .min(6, phoneMessage)
+        .max(30, phoneMessage)
+        .regex(/^[+\d\s]+$/, phoneMessage),
+      email: z.string().transform((value, context) => {
+        const email = normalizeContactEmail(value);
+        if (!email) {
+          context.addIssue({
+            code: "custom",
+            message: "Please enter a valid email address.",
+          });
+          return z.NEVER;
+        }
+        return email;
+      }),
+      attending: z.boolean({ message: "Please tell us if you can attend." }),
+      guestCount: z.coerce.number().int().min(1).max(limit),
+      dietary: z
+        .string()
+        .trim()
+        .max(SIMPLE_DIETARY_MAX_LENGTH)
+        .optional()
+        .transform((value) => value || undefined),
+      website: z.string().optional(),
+      language: z
+        .unknown()
+        .transform((value): Language => (value === "id" ? "id" : "en")),
+    }),
+  );
+}
+
+// SF-3: "Ana Maria Tan" -> "Ana", for "Thank you, Ana!".
+export function firstNameOf(name: string) {
+  return name.trim().split(/\s+/)[0] ?? "";
 }
 
 // C1: sanity window for travel dates — the wedding is 12 Dec 2026 in Medan.
