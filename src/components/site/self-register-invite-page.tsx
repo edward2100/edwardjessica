@@ -544,16 +544,9 @@ export function SelfRegisterInvitePage({
 
       <BrideGroomSection content={content} language={language} />
 
-      {/* SF-3: no calendar button on the simple form's page (the .ics has
-          the event times). */}
-      <SaveDateSection
-        content={content}
-        labels={c}
-        showCalendarButton={!isSimpleForm}
-      />
+      <SaveDateSection content={content} labels={c} />
 
-      {/* SF-3: no Schedule (event start times) on the simple form's page. */}
-      {content.events.length && !isSimpleForm ? (
+      {content.events.length ? (
         <section className="section">
           <div className="page-shell">
             <div className="section-heading section-heading-centered">
