@@ -220,8 +220,8 @@ export const weddingContent: WeddingContent = {
       venueAddress:
         "Jl. Balai Kota No. 1, Kesawan, Kec. Medan Bar., Kota Medan, North Sumatra 20112, Indonesia",
       note: {
-        en: "Dress Code: Semi-formal",
-        id: "Aturan Berpakaian: Semi-formal",
+        en: "Dress Code: Cocktail / Semi-formal",
+        id: "Aturan Berpakaian: Cocktail / Semi-formal",
       },
       mapUrl: "https://maps.app.goo.gl/hPL5x2kPToUaAK946",
     },
