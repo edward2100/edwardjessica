@@ -426,6 +426,15 @@ describe("simple form in the browser (SF-3)", () => {
     await choose("#simple-count", "2");
     await typeInto("#simple-dietary", "Vegetarian");
 
+    // PL-4: a second person needs a name before anything is sent.
+    expect(rsvpText()).toContain("Guest 2 name");
+    await click(buttonNamed("Send RSVP"));
+    expect(calls).toEqual([]);
+    expect(rsvpText()).toContain("Please enter guest 2's name.");
+    expect(document.activeElement?.id).toBe("simple-guest-2");
+    await typeInto("#simple-guest-2", "Budi Tan");
+    expect(rsvpText()).not.toContain("Please enter guest 2's name.");
+
     await click(buttonNamed("Send RSVP"));
     // Disabled while sending.
     const sending = buttonNamed("Saving...");
@@ -440,6 +449,7 @@ describe("simple form in the browser (SF-3)", () => {
           email: "ana@example.com",
           attending: true,
           guestCount: 2,
+          guestNames: ["Ana Tan", "Budi Tan"],
           dietary: "Vegetarian",
           website: "",
           language: "en",

@@ -51,10 +51,23 @@ describe("CSV parsing", () => {
     expect(template).toContain("holy_matrimony|tea_lunch|dinner");
 
     const rows = parseGuestCsv(template);
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(5);
     expect(rows[0].flow).toBe("family");
     expect(rows[2].flow).toBe("generic");
     expect(rows[0].events).toEqual(["holy_matrimony", "tea_lunch", "dinner"]);
     expect(rows[2].events).toEqual(["dinner"]);
+    // PL-8: the link column, blank except on the personal-link example.
+    expect(rows.map((row) => row.link)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      "JESSmarriED",
+      "JESSmarriED",
+    ]);
+  });
+
+  it("reads a link column as an address without its slash (PL-8)", () => {
+    const rows = parseGuestCsv("groupName,name,link\nAna,Ana,/JESSmarriED\nBudi,Budi, ");
+    expect(rows.map((row) => row.link)).toEqual(["JESSmarriED", undefined]);
   });
 });

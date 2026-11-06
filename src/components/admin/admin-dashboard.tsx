@@ -49,11 +49,15 @@ import {
   buildAdminWhatsAppMessage,
   buildWhatsAppMessageUrl,
   eventKeys,
+  findPersonalLinkByCode,
+  hasPersonalLinks,
+  invitationPath,
   isNoRsvpDeadline,
   NO_RSVP_DEADLINE,
   mealPreferences,
   normalizeContactEmail,
   normalizeWhatsAppUrl,
+  personalLinkPath,
 } from "@/lib/rsvp";
 import type {
   AdminGuestInput,
@@ -585,6 +589,11 @@ function GuestsView({
               onChange={(event) => setCsv(event.target.value)}
               placeholder="groupName,greeting,name,phone,email,side,flow,events"
             />
+            {/* PL-8 */}
+            <small className="muted">
+              Add a link column with a simple-form link&apos;s address (e.g.
+              JESSmarriED) to give each group its own random personal link.
+            </small>
           </label>
         </div>
         <button
@@ -623,6 +632,7 @@ function GuestsView({
       {editing ? (
         <GuestGroupEditor
           key={editing === "new" ? "new" : editing.code}
+          content={snapshot.content}
           invitation={editing === "new" ? null : editing}
           onCancel={() => setEditing(null)}
           onSaved={(nextSnapshot, invitation) => {
@@ -651,11 +661,13 @@ function GuestsView({
 }
 
 function GuestGroupEditor({
+  content,
   invitation,
   onCancel,
   onSaved,
   onDeleted,
 }: {
+  content: WeddingContent;
   invitation: InvitationGroup | null;
   onCancel: () => void;
   onSaved: (snapshot: AdminSnapshot, invitation: InvitationGroup) => void;
@@ -667,6 +679,23 @@ function GuestGroupEditor({
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // PL-8: links a new group can get a random personal link on.
+  const personalHosts = content.publicInviteTypes.filter(hasPersonalLinks);
+  const personalHost = personalHosts.find(
+    (link) => link.id === draft.personalLinkId,
+  );
+  const personalLink = invitation
+    ? findPersonalLinkByCode(content, invitation.code)
+    : undefined;
+
+  function choosePersonalLink(id: string) {
+    setDraft((current) => ({
+      ...current,
+      personalLinkId: id || undefined,
+      // The simple form: general, and Yes means the dinner.
+      ...(id ? { flow: "generic" as const, eligibleEvents: ["dinner" as const] } : {}),
+    }));
+  }
 
   function setField<K extends keyof AdminInvitationUpsert>(
     key: K,
@@ -752,6 +781,13 @@ function GuestGroupEditor({
           <h3 className="serif" style={{ fontSize: "2rem", marginTop: 6 }}>
             {draft.groupName || "Guest group"}
           </h3>
+          {invitation && personalLink ? (
+            // PL-8: the address to send this guest.
+            <p className="muted" style={{ marginTop: 6 }}>
+              Personal link: {personalLinkPath(personalLink, invitation.code)}{" "}
+              <CopyInviteLinkButton code={invitation.code} content={content} />
+            </p>
+          ) : null}
         </div>
         <button
           className="button button-muted"
@@ -814,11 +850,36 @@ function GuestGroupEditor({
             <option value="bride">Bride</option>
           </select>
         </label>
+        {!invitation && personalHosts.length ? (
+          // PL-8: a random personal link on a simple-form link instead of
+          // the usual /invite/CODE.
+          <label className="form-field">
+            <span>Invite link</span>
+            <select
+              className="select"
+              value={draft.personalLinkId ?? ""}
+              onChange={(event) => choosePersonalLink(event.target.value)}
+            >
+              <option value="">Personal invite (/invite/CODE)</option>
+              {personalHosts.map((link) => (
+                <option key={link.id} value={link.id}>
+                  {`Personal link on /${link.path} (simple form)`}
+                </option>
+              ))}
+            </select>
+            {personalHost ? (
+              <small className="muted">
+                {`Saving creates a random address like /${personalHost.path}-2295A3FMJQWX: the simple form, dinner only.`}
+              </small>
+            ) : null}
+          </label>
+        ) : null}
         <label className="form-field">
           <span>Invitation flow</span>
           <select
             className="select"
             value={draft.flow}
+            disabled={Boolean(personalHost || personalLink)}
             onChange={(event) =>
               setField("flow", event.target.value as PublicInviteFlow)
             }
@@ -896,7 +957,9 @@ function GuestGroupEditor({
             </button>
           </div>
           <small className="muted">
-            Leave blank to use the main RSVP deadline.
+            {personalHost
+              ? `Leave blank to use the /${personalHost.path} link's deadline.`
+              : "Leave blank to use the main RSVP deadline."}
           </small>
         </div>
       </div>
@@ -909,6 +972,7 @@ function GuestGroupEditor({
               <span>{eventLabels[eventKey]}</span>
               <input
                 type="checkbox"
+                disabled={Boolean(personalHost || personalLink)}
                 checked={draft.eligibleEvents.includes(eventKey)}
                 onChange={(event) =>
                   setField(
@@ -1364,7 +1428,7 @@ function InvitationTable({
               <td>{attendanceEventLabels(invitation)}</td>
               <td>
                 <span style={{ display: "block" }}>{invitation.code}</span>
-                <CopyInviteLinkButton code={invitation.code} />
+                <CopyInviteLinkButton code={invitation.code} content={content} />
               </td>
               <td>
                 <WhatsAppMessageActions
@@ -1394,14 +1458,21 @@ function InvitationTable({
   );
 }
 
-// Copies the guest's personal invite link (/invite/CODE) to the clipboard so
-// the admin can paste it straight into a chat. Falls back to a prompt if the
-// clipboard API is unavailable (e.g. non-secure context).
-function CopyInviteLinkButton({ code }: { code: string }) {
+// Copies the guest's personal invite link (/invite/CODE, or PL-8 their
+// /JESSmarriED-… personal link) to the clipboard so the admin can paste it
+// straight into a chat. Falls back to a prompt if the clipboard API is
+// unavailable (e.g. non-secure context).
+function CopyInviteLinkButton({
+  code,
+  content,
+}: {
+  code: string;
+  content: WeddingContent;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function copyLink() {
-    const url = `${window.location.origin}/invite/${encodeURIComponent(code)}`;
+    const url = `${window.location.origin}${invitationPath(content, code)}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);

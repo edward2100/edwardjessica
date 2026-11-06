@@ -80,7 +80,25 @@ export function parseGuestCsv(csv: string): GuestCsvRow[] {
         row.privateNotesEn || row["Private Notes EN"] || undefined,
       privateNotesId:
         row.privateNotesId || row["Private Notes ID"] || undefined,
+      code: parseFixedCode(row.code || row.Code),
+      link:
+        String(row.link || row.Link || "")
+          .trim()
+          .replace(/^\/+/, "") || undefined,
+      note: String(row.note || row.Note || "").trim() || undefined,
     }));
+}
+
+// PL-5: an optional fixed invite code (e.g. a personal link's
+// JESSMARRIED-2295A3FMJQWX): capitals, digits and dashes. A malformed one
+// fails the import rather than being replaced by a generated code.
+function parseFixedCode(value: unknown) {
+  const code = String(value || "").trim().toUpperCase();
+  if (!code) return undefined;
+  if (!/^[A-Z0-9][A-Z0-9-]{2,40}$/.test(code)) {
+    throw new Error(`"${code}" is not a valid invite code.`);
+  }
+  return code;
 }
 
 /**
@@ -134,6 +152,7 @@ export function buildGuestCsvTemplate() {
         "Accommodation note: a limited room block can be requested through the family.",
       privateNotesId:
         "Catatan akomodasi: kamar terbatas dapat diminta melalui keluarga.",
+      link: "",
     },
     {
       groupName: "Hardwin Family",
@@ -149,6 +168,7 @@ export function buildGuestCsvTemplate() {
         "Accommodation note: a limited room block can be requested through the family.",
       privateNotesId:
         "Catatan akomodasi: kamar terbatas dapat diminta melalui keluarga.",
+      link: "",
     },
     {
       groupName: "University Friends",
@@ -162,6 +182,37 @@ export function buildGuestCsvTemplate() {
       events: "dinner",
       privateNotesEn: "",
       privateNotesId: "",
+      link: "",
+    },
+    // PL-8: a link column gives the group its own random personal link on
+    // that simple-form link, e.g. /JESSmarriED-2295A3FMJQWX.
+    {
+      groupName: "Bp. Budi & Istri",
+      greeting: "Kepada Yth. Bp. Budi & Istri",
+      name: "Bp. Budi",
+      phone: "+628123456780",
+      email: "",
+      maxGuests: 2,
+      side: "groom",
+      flow: "generic",
+      events: "dinner",
+      privateNotesEn: "",
+      privateNotesId: "",
+      link: "JESSmarriED",
+    },
+    {
+      groupName: "Bp. Budi & Istri",
+      greeting: "Kepada Yth. Bp. Budi & Istri",
+      name: "Istri",
+      phone: "+628123456780",
+      email: "",
+      maxGuests: 2,
+      side: "groom",
+      flow: "generic",
+      events: "dinner",
+      privateNotesEn: "",
+      privateNotesId: "",
+      link: "JESSmarriED",
     },
   ]);
 }

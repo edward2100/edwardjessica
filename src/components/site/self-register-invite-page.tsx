@@ -22,7 +22,10 @@ import { FloatingRsvpButton } from "@/components/site/floating-rsvp-button";
 import { GuestMenu } from "@/components/site/guest-menu";
 import { LanguageToggle } from "@/components/site/language-toggle";
 import { LateRsvpNotice } from "@/components/site/late-rsvp-notice";
-import { OpeningCover } from "@/components/site/opening-cover";
+import {
+  OpeningCover,
+  useCoverReturnMarker,
+} from "@/components/site/opening-cover";
 import { PhoneCountryInput } from "@/components/site/phone-country-input";
 import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
 import { BrideGroomSection } from "@/components/site/bride-groom-section";
@@ -44,6 +47,7 @@ import {
   copy,
   guestCountHintText,
   lateRsvpText,
+  personalStatusText,
   rsvpCountdownText,
   text,
 } from "@/lib/i18n";
@@ -61,6 +65,7 @@ import type {
   InvitationGroup,
   Language,
   MealPreference,
+  PersonalInvite,
   PublicInviteType,
   RsvpWindow,
   WeddingContent,
@@ -69,10 +74,16 @@ import type {
 export function SelfRegisterInvitePage({
   content,
   inviteType,
+  personal,
   initialLanguage,
 }: {
   content: WeddingContent;
   inviteType: PublicInviteType;
+  /**
+   * PL-6: a personal link (/JESSmarriED-2295A3FMJQWX) on this simple-form link: the
+   * guest's name on the cover and hero, their saved answer, a prefilled form.
+   */
+  personal?: PersonalInvite;
   /** Saved language from the ej_language cookie, so SSR matches hydration. */
   initialLanguage?: Language | null;
 }) {
@@ -99,7 +110,17 @@ export function SelfRegisterInvitePage({
   const formRef = useRef<HTMLDivElement | null>(null);
 
   const c = copy[language];
-  const activeCode = savedInvitation?.code;
+  // PL-6: the personal link's answer, updated when the guest sends a new one;
+  // formKey restarts the form so it opens on the latest answer.
+  const [personalInvite, setPersonalInvite] = useState(personal);
+  const [formKey, setFormKey] = useState(0);
+  const personalAnswer = personalInvite
+    ? personalStatusText(language, personalInvite)
+    : null;
+  // PL-6: menu and Discover/Travel links carry the personal code, and its
+  // /invite/<code> address leads back to the personal link.
+  const activeCode = savedInvitation?.code ?? personal?.code;
+  useCoverReturnMarker(Boolean(personal));
   // SF-3: the simple form (no email code, Yes = the dinner reception). Its
   // page shows no event times: no Schedule section, no calendar button.
   const isSimpleForm = isSimplePublicInviteType(inviteType);
@@ -271,6 +292,10 @@ export function SelfRegisterInvitePage({
 
   // SF-3: the simple form was sent: its success screen replaces the form.
   function openSimpleOutcome(outcome: SimpleRsvpOutcome) {
+    if (outcome.kind === "personal") {
+      setPersonalInvite(outcome.invite);
+      setFormKey((key) => key + 1);
+    }
     setSimpleOutcome(outcome);
     setLateSaved(outcome.kind === "saved" && outcome.late);
     setRsvpJustSaved(true);
@@ -483,6 +508,7 @@ export function SelfRegisterInvitePage({
         <OpeningCover
           variant={content.openingAnimation as "moongate" | "envelope"}
           coupleName={content.coupleName}
+          guestName={personal?.displayName}
           language={language}
           onLanguageChange={handleLanguageChange}
           labels={c}
@@ -503,9 +529,20 @@ export function SelfRegisterInvitePage({
         <div className="hero-content">
           <div>
             <LanguageToggle language={language} onChange={handleLanguageChange} />
-            <p className="hero-kicker" style={{ marginTop: 34 }}>
-              {c.genericInviteGreeting}
-            </p>
+            {personal ? (
+              /* PL-6: "Kepada Yth." and the guest's name, large. */
+              <>
+                <p className="hero-kicker" style={{ marginTop: 34 }}>
+                  {c.coverGreeting}
+                </p>
+                <p className="hero-guest-name serif">{personal.displayName}</p>
+                <div className="hero-guest-rule" aria-hidden="true" />
+              </>
+            ) : (
+              <p className="hero-kicker" style={{ marginTop: 34 }}>
+                {c.genericInviteGreeting}
+              </p>
+            )}
             <h1 className="hero-title serif">{content.coupleName}</h1>
             <p className="hero-meta">{text(content.openingText, language)}</p>
             {useCover ? null : (
@@ -743,7 +780,9 @@ export function SelfRegisterInvitePage({
               ) : !rsvpJustSaved ? (
                 <div className="rsvp-callout">
                   <div>
-                    <p className="eyebrow">{c.registerRsvp}</p>
+                    <p className="eyebrow">
+                      {personalAnswer ? c.personalYourRsvp : c.registerRsvp}
+                    </p>
                     <h2
                       className="serif"
                       style={{
@@ -751,15 +790,20 @@ export function SelfRegisterInvitePage({
                         lineHeight: 0.95,
                       }}
                     >
-                      {savedInvitation ? c.rsvpSavedTitle : c.readyToRsvp}
+                      {savedInvitation || personalAnswer
+                        ? c.rsvpSavedTitle
+                        : c.readyToRsvp}
                     </h2>
                     <p className="muted" style={{ marginTop: 14 }}>
                       {savedInvitation
                         ? c.receivedRsvp
-                        : isNoRsvpDeadline(content.rsvpDeadline)
-                          ? // ND-1: no "RSVP by" date on a no-deadline link.
-                            c.reviewBeforeRsvp
-                          : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
+                        : personalAnswer
+                          ? // PL-6: a personal link's saved answer.
+                            personalAnswer
+                          : isNoRsvpDeadline(content.rsvpDeadline)
+                            ? // ND-1: no "RSVP by" date on a no-deadline link.
+                              c.reviewBeforeRsvp
+                            : `${c.reviewBeforeRsvp} ${formatDeadlineCopy(c.rsvpBy, content.rsvpDeadline, content.timezone, language)}.`}
                     </p>
                     {/* Countdown line */}
                     <SelfRegRsvpCountdownLine
@@ -774,7 +818,7 @@ export function SelfRegisterInvitePage({
                       onClick={revealForm}
                     >
                       <Users size={18} />
-                      {c.registerRsvp}
+                      {personalAnswer ? c.personalChange : c.registerRsvp}
                     </button>
                   )}
                 </div>
@@ -787,6 +831,7 @@ export function SelfRegisterInvitePage({
                     content={content}
                     language={language}
                     outcome={simpleOutcome}
+                    onChangeAnswer={personal ? revealForm : undefined}
                   />
                 </div>
               ) : null}
@@ -827,8 +872,10 @@ export function SelfRegisterInvitePage({
                   style={{ marginTop: 24, maxWidth: 620 }}
                 >
                   <SimpleRsvpForm
+                    key={formKey}
                     content={content}
                     inviteType={inviteType}
+                    personal={personalInvite}
                     language={language}
                     late={rsvpWindow === "late"}
                     onClosed={handleRsvpClosedByServer}

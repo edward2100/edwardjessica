@@ -1,5 +1,5 @@
 import { formatRsvpDeadlineDate, normalizeDeadlineIso } from "@/lib/rsvp";
-import type { Language, LocalizedString } from "@/lib/types";
+import type { Language, LocalizedString, PersonalInvite } from "@/lib/types";
 
 export const languages: { code: Language; label: string }[] = [
   { code: "en", label: "EN" },
@@ -217,6 +217,19 @@ export const copy = {
       "We already have an RSVP for this email. To change it, message us on WhatsApp.",
     simpleExistingNoWhatsApp:
       "We already have an RSVP for this email. To change it, please contact Edward or Jessica.",
+    // PL-4: one name field per person.
+    simpleGuestName: "Guest {n} name",
+    simpleErrorGuestName: "Please enter guest {n}'s name.",
+    // PL-6: personal links (/JESSmarriED-2295A3FMJQWX).
+    coverGreeting: "Dear",
+    personalGuestCount: "Number of guests",
+    personalEmailOptional: "Email (optional, for a confirmation)",
+    personalYourRsvp: "Your RSVP",
+    personalAttendingOne: "Attending · 1 person: {names}",
+    personalAttendingMany: "Attending · {count} people: {names}",
+    personalDeclined: "You've let us know you can't make it.",
+    personalChange: "Change my answer",
+    personalChangeHere: "You can change your answer on this page.",
   },
   id: {
     weddingOf: "Pernikahan",
@@ -424,6 +437,17 @@ export const copy = {
       "Kami sudah menerima RSVP untuk email ini. Untuk mengubahnya, kabari kami lewat WhatsApp.",
     simpleExistingNoWhatsApp:
       "Kami sudah menerima RSVP untuk email ini. Untuk mengubahnya, silakan hubungi Edward atau Jessica.",
+    simpleGuestName: "Nama tamu {n}",
+    simpleErrorGuestName: "Mohon isi nama tamu {n}.",
+    coverGreeting: "Kepada Yth.",
+    personalGuestCount: "Jumlah tamu",
+    personalEmailOptional: "Email (opsional, untuk konfirmasi)",
+    personalYourRsvp: "RSVP Anda",
+    personalAttendingOne: "Hadir · 1 orang: {names}",
+    personalAttendingMany: "Hadir · {count} orang: {names}",
+    personalDeclined: "Anda sudah mengabari bahwa tidak dapat hadir.",
+    personalChange: "Ubah jawaban",
+    personalChangeHere: "Anda dapat mengubah jawaban melalui halaman ini.",
   },
 } as const;
 
@@ -439,6 +463,29 @@ export function simpleReceivedText(language: Language, count: number) {
   const c = copy[language];
   if (count === 1) return c.simpleReceivedOne;
   return c.simpleReceivedMany.replace("{count}", String(count));
+}
+
+// PL-4: "Guest 2 name" / "Please enter guest 2's name."
+export function guestNameText(template: string, guestNumber: number) {
+  return template.replace("{n}", String(guestNumber));
+}
+
+// PL-6: a personal link's saved answer, e.g. "Attending · 2 people: Bp. Hadi,
+// Istri"; null while it has no answer.
+export function personalStatusText(
+  language: Language,
+  invite: Pick<PersonalInvite, "status" | "guestNames">,
+) {
+  const c = copy[language];
+  if (invite.status === "declined") return c.personalDeclined;
+  if (invite.status !== "attending") return null;
+  const template =
+    invite.guestNames.length === 1
+      ? c.personalAttendingOne
+      : c.personalAttendingMany;
+  return template
+    .replace("{count}", String(invite.guestNames.length))
+    .replace("{names}", invite.guestNames.join(", "));
 }
 
 // LR-4: fills {until} in a late-RSVP template with " until 3 November 2026"

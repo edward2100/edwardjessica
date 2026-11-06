@@ -88,6 +88,8 @@ test("/JESSmarriED: the full page with The Day's Events, and an RSVP without an 
   await page.getByLabel(en.emailAddress).fill(email);
   await page.getByRole("button", { name: en.simpleYes }).click();
   await page.getByLabel(en.simpleHowMany).selectOption("2");
+  // PL-4: the second person is named too.
+  await page.getByLabel("Guest 2 name").fill(`Plus One ${suffix}`);
   await page.getByLabel(en.simpleDietary).fill("Vegetarian");
   await page.getByRole("button", { name: en.saveRsvp }).click();
 
@@ -118,7 +120,10 @@ test("/JESSmarriED: the full page with The Day's Events, and an RSVP without an 
       message: "Dietary: Vegetarian",
     },
   });
-  expect(saved!.guests.map((guest) => guest.mealPreference)).toEqual(["unset", "unset"]);
+  expect(saved!.guests.map((guest) => [guest.name, guest.mealPreference])).toEqual([
+    [guestName, "unset"],
+    [`Plus One ${suffix}`, "unset"],
+  ]);
 });
 
 test("/jessmarried, /JESSMARRIED and /invite/JESSMARRIED keep the standard form", async ({
@@ -189,4 +194,88 @@ test("admin: the link card shows its form and custom address; the RSVP tab shows
   await expect(
     page.getByRole("row").filter({ hasText: groupName }).getByText("Note:"),
   ).toHaveCount(0);
+});
+
+// PL-7: a personal link made by a CSV import with a link column (PL-8: the
+// server picks a random code). Runs last: it switches the opening to the
+// moon gate cover, then restores the content.
+test("a personal link: the guest's name on the cover and hero, a prefilled RSVP that can be changed", async ({
+  page,
+}) => {
+  const id = copy.id;
+  const csv = [
+    "groupName,greeting,name,maxGuests,side,flow,events,link,note",
+    "Bp. Hadi & Istri,Dear Bp. Hadi & Istri,Bp. Hadi,2,groom,generic,dinner,JESSmarriED,Dietary: 1 vegetarian",
+    "Bp. Hadi & Istri,Dear Bp. Hadi & Istri,Istri,2,groom,generic,dinner,JESSmarriED,",
+  ].join("\n");
+  const imported = await admin.post("/api/admin/guests", { data: { csv } });
+  expect(imported.ok()).toBe(true);
+  const { created } = (await imported.json()) as { created: Array<{ code: string }> };
+  expect(created).toHaveLength(1);
+  const code = created[0].code;
+  expect(code).toMatch(/^JESSMARRIED-[2-9A-HJKMNP-Z]{12}$/);
+  const personalSuffix = code.slice("JESSMARRIED-".length);
+  const draft = (await (await admin.get("/api/admin/content")).json()) as {
+    content: WeddingContent;
+  };
+  await publish({ ...draft.content, openingAnimation: "moongate" });
+
+  try {
+    // Reduced motion stops the monogram's pulse, so it can be clicked.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    // Opens in Indonesian with the name on the cover.
+    await page.goto(`/JESSmarriED-${personalSuffix}`);
+    const cover = page.locator(".opening-cover");
+    await expect(cover.getByText(id.coverGreeting, { exact: true })).toBeVisible();
+    await expect(cover.getByText("Bp. Hadi & Istri", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: id.tapToOpen }).click();
+    await expect(cover).toHaveCount(0);
+    await expect(page.locator(".hero-guest-name")).toHaveText("Bp. Hadi & Istri");
+
+    await page.getByRole("button", { name: id.registerRsvp }).click();
+    await expect(page.getByLabel(id.yourName)).toHaveCount(0);
+    await expect(page.getByLabel(id.simpleWhatsApp)).toHaveCount(0);
+    await page.getByRole("button", { name: id.simpleYes }).click();
+    await expect(page.getByLabel(id.personalGuestCount)).toHaveValue("2");
+    await expect(page.getByLabel("Nama tamu 1")).toHaveValue("Bp. Hadi");
+    await expect(page.getByLabel("Nama tamu 2")).toHaveValue("Istri");
+    await expect(page.getByLabel(id.simpleDietary)).toHaveValue("1 vegetarian");
+    await page.getByLabel("Nama tamu 2").fill("Ibu Wati");
+    await page.getByRole("button", { name: id.saveRsvp }).click();
+    await expect(
+      page.getByRole("heading", { name: "Terima kasih, Bp. Hadi & Istri!" }),
+    ).toBeVisible();
+    await expect(page.getByText(id.personalChangeHere)).toBeVisible();
+
+    const exported = await admin.get("/api/admin/export?format=json");
+    const saved = ((await exported.json()) as AdminSnapshot).invitations.find(
+      (invitation) => invitation.code === code,
+    );
+    expect(saved).toMatchObject({
+      groupName: "Bp. Hadi & Istri",
+      source: "admin",
+      eligibleEvents: ["dinner"],
+      rsvpDeadline: NO_RSVP_DEADLINE,
+      rsvp: {
+        status: "attending",
+        eventAttendance: { dinner: true },
+        message: "Dietary: 1 vegetarian",
+      },
+    });
+    expect(saved!.guests.map((guest) => guest.name)).toEqual(["Bp. Hadi", "Ibu Wati"]);
+
+    // A refresh shows the cover again, then the saved answer.
+    await page.reload();
+    await expect(cover.getByText("Bp. Hadi & Istri", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: id.tapToOpen }).click();
+    await expect(page.getByText("Hadir · 2 orang: Bp. Hadi, Ibu Wati")).toBeVisible();
+    await expect(page.getByRole("button", { name: id.personalChange })).toBeVisible();
+
+    // The invitation's /invite/<code> address leads to the personal link.
+    await page.goto(`/invite/${code}`);
+    await expect(page).toHaveURL(new RegExp(`/JESSmarriED-${personalSuffix}$`));
+  } finally {
+    await publish(draft.content);
+    await admin.delete("/api/admin/guests", { data: { code } });
+  }
 });
