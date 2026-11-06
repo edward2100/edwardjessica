@@ -20,6 +20,7 @@ import type {
   InvitationTravelOverrides,
   MediaAsset,
   OpeningAnimation,
+  PersonalRsvpSubmission,
   PublicInviteFlow,
   PublicInviteType,
   RsvpHistoryItem,
@@ -42,8 +43,12 @@ import {
   deriveLateResponses,
   ensureEligibleEvents,
   eventKeys,
+  findPersonalLinkByCode,
+  findPersonalLinkByPath,
   generateInviteCode,
+  generatePersonalLinkCode,
   hasAtLeastOneAttendingEvent,
+  hasPersonalLinks,
   latestGuestChanges,
   normalizeDeadlineIso,
   normalizeLateRsvp,
@@ -1240,6 +1245,132 @@ export async function submitRsvp(
   return updatedInvitation;
 }
 
+/**
+ * PL-3: a personal link's RSVP (no email code: the link's code is the key).
+ * Attending sets the party to exactly the names sent (renames, adds and
+ * removes guests); declining keeps the party as invited. Dinner only and no
+ * meal choices, like the simple form. History is recorded as in submitRsvp.
+ */
+export async function submitPersonalRsvp(
+  invitation: InvitationGroup,
+  submission: PersonalRsvpSubmission,
+) {
+  const now = new Date().toISOString();
+  const status = submission.attending ? "attending" : "declined";
+  const names = submission.attending
+    ? submission.guestNames
+        .slice(0, submission.guestCount)
+        .map((name) => name.trim())
+    : invitation.guests.map((guest) => guest.name);
+  const guests: Guest[] = names.map((name, index) => {
+    const existing = invitation.guests[index];
+    if (existing) {
+      return submission.attending
+        ? { ...existing, name, mealPreference: "unset" }
+        : existing;
+    }
+    return {
+      id: `${invitation.id}-guest-${Date.now()}-${index + 1}`,
+      invitationGroupId: invitation.id,
+      name,
+      mealPreference: "unset",
+    };
+  });
+  const existingIds = new Set(invitation.guests.map((guest) => guest.id));
+  const removedIds = invitation.guests.slice(guests.length).map((guest) => guest.id);
+  const dietary = submission.attending ? submission.dietary?.trim() : undefined;
+  const updatedInvitation: InvitationGroup = {
+    ...invitation,
+    email: submission.email || invitation.email,
+    rsvp: {
+      ...invitation.rsvp,
+      status,
+      eventAttendance: submission.attending ? { dinner: true } : {},
+      message: dietary ? `Dietary: ${dietary}` : undefined,
+      // B13: the first answer's time is kept on a change.
+      submittedAt: invitation.rsvp.submittedAt || now,
+      updatedAt: now,
+      updatedBy: "guest",
+    },
+    guests,
+  };
+
+  if (isSupabaseConfigured()) {
+    const supabase = createSupabaseServiceClient();
+    if (!supabase) throw new Error("Supabase client unavailable");
+    const { error: rsvpError } = await supabase.from("rsvps").upsert({
+      id: invitation.rsvp.id,
+      invitation_group_id: invitation.id,
+      status,
+      event_attendance: updatedInvitation.rsvp.eventAttendance,
+      // null clears a note left by an earlier answer.
+      message: updatedInvitation.rsvp.message ?? null,
+      submitted_at: updatedInvitation.rsvp.submittedAt,
+      updated_at: now,
+      updated_by: "guest",
+    });
+    if (rsvpError) throw new Error(rsvpError.message);
+
+    for (const guest of guests) {
+      if (existingIds.has(guest.id)) {
+        const { error } = await supabase
+          .from("guests")
+          .update({ name: guest.name, meal_preference: guest.mealPreference })
+          .eq("id", guest.id);
+        if (error) throw new Error(error.message);
+      } else {
+        const { data, error } = await supabase
+          .from("guests")
+          .insert({
+            invitation_group_id: invitation.id,
+            name: guest.name,
+            meal_preference: guest.mealPreference,
+          })
+          .select("id")
+          .single();
+        if (error) throw new Error(error.message);
+        if (data?.id) guest.id = String(data.id);
+      }
+    }
+    if (removedIds.length) {
+      const { error } = await supabase.from("guests").delete().in("id", removedIds);
+      if (error) throw new Error(error.message);
+    }
+
+    if (submission.email && submission.email !== invitation.email) {
+      const { error } = await supabase
+        .from("invitation_groups")
+        .update({ email: submission.email })
+        .eq("id", invitation.id);
+      if (error) throw new Error(error.message);
+    }
+
+    const { error: historyError } = await supabase.from("rsvp_history").insert({
+      invitation_group_id: invitation.id,
+      status,
+      changed_by: "guest",
+      changed_at: now,
+      snapshot: updatedInvitation.rsvp,
+    });
+    if (historyError) throw new Error(historyError.message);
+  } else {
+    const store = previewStore();
+    store.invitations = store.invitations.map((item) =>
+      item.id === invitation.id ? updatedInvitation : item,
+    );
+    store.history.unshift({
+      id: `history-${Date.now()}`,
+      invitationGroupId: invitation.id,
+      status,
+      changedBy: "guest",
+      changedAt: now,
+      snapshot: updatedInvitation.rsvp,
+    });
+  }
+
+  return updatedInvitation;
+}
+
 export async function createSelfRegisteredInvitation(
   submission: SelfRegistrationSubmission,
   inviteType?: PublicInviteType,
@@ -1357,6 +1488,10 @@ export async function createSimpleRegisteredInvitation(
     name,
     status,
     guestCount: submission.attending ? submission.guestCount : 1,
+    // PL-4: guest 1 is always the name above; the form sends the rest.
+    guestNames: submission.guestNames
+      ? [name, ...submission.guestNames.slice(1)]
+      : undefined,
   });
   // DL-5: the link's deadline (or No deadline) is snapshotted as usual.
   const linkDeadline = normalizeDeadlineIso(inviteType.rsvpDeadline);
@@ -2051,16 +2186,64 @@ export async function recordAdminWhatsAppMessage({
 }
 
 export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
+  // PL-5: rows with a code are grouped by that code (two groups may share a
+  // name); PL-8: rows with a link by link and name; the rest by group name,
+  // as before.
   const groups = new Map<string, GuestCsvRow[]>();
   for (const row of rows) {
-    groups.set(row.groupName, [...(groups.get(row.groupName) || []), row]);
+    const key = row.code
+      ? `code:${row.code}`
+      : row.link
+        ? `link:${row.link.toUpperCase()}:${row.groupName}`
+        : `name:${row.groupName}`;
+    groups.set(key, [...(groups.get(key) || []), row]);
   }
+  // PL-5: a personal link's invitation takes its link's deadline (as DL-5
+  // does for registrations), so its answers are judged by that date.
+  const personalRows = rows.some((row) => row.code || row.link);
+  const content = personalRows ? await getPublishedContent() : null;
+  const existingCodes = new Set(
+    personalRows ? await getExistingInvitationCodes() : [],
+  );
 
   const created: InvitationGroup[] = [];
-  for (const [groupName, groupRows] of groups.entries()) {
+  const fixedCodes = new Set<string>();
+  // B14/F5: collect per-row failures so the caller can surface partial-success details.
+  const rowErrors: Array<{ groupName: string; message: string }> = [];
+  for (const groupRows of groups.values()) {
     const first = groupRows[0];
-    const id = `invite-${groupName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-    const code = generateInviteCode(groupName);
+    const groupName = first.groupName;
+    // PL-5: numbered, so two groups that share a name (and the millisecond)
+    // keep their own ids in the preview store.
+    const id = `invite-${groupName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}-${created.length + 1}`;
+    // PL-5: a fixed code is kept exactly (a link points at it), never
+    // suffixed: one already in use fails that group instead.
+    if (first.code && existingCodes.has(first.code)) {
+      rowErrors.push({ groupName, message: `Code ${first.code} is already used.` });
+      continue;
+    }
+    // PL-8: a link (and no code) asks for a new random personal link on it.
+    let fixedCode = first.code;
+    if (!fixedCode && first.link) {
+      const host = content ? findPersonalLinkByPath(content, first.link) : undefined;
+      if (!host) {
+        rowErrors.push({
+          groupName,
+          message: `No published simple-form link at /${first.link}.`,
+        });
+        continue;
+      }
+      do {
+        fixedCode = generatePersonalLinkCode(host);
+      } while (existingCodes.has(fixedCode));
+    }
+    const code = fixedCode || generateInviteCode(groupName);
+    if (fixedCode) {
+      fixedCodes.add(code);
+      existingCodes.add(code);
+    }
+    const personalLink =
+      fixedCode && content ? findPersonalLinkByCode(content, fixedCode) : undefined;
     const guests: Guest[] = groupRows.map((row, index) => ({
       id: `${id}-guest-${index + 1}`,
       invitationGroupId: id,
@@ -2077,7 +2260,8 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
       maxGuests: maxGuestsForInvitation(first.maxGuests, guests),
       side: first.side,
       source: "admin",
-      flow: first.flow,
+      // PL-8: a personal link uses the simple form: general, dinner only.
+      flow: personalLink ? "generic" : first.flow,
       privateNotes:
         first.privateNotesEn || first.privateNotesId
           ? {
@@ -2085,20 +2269,21 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
               id: first.privateNotesId || first.privateNotesEn || "",
             }
           : undefined,
-      eligibleEvents: first.events,
+      eligibleEvents: personalLink ? ["dinner"] : first.events,
       rsvp: {
         id: `rsvp-${id}`,
         invitationGroupId: id,
         status: "pending",
         eventAttendance: {},
+        message: first.note || undefined,
       },
       guests,
+      rsvpDeadline: personalLink
+        ? normalizeDeadlineIso(personalLink.rsvpDeadline)
+        : undefined,
     };
     created.push(group);
   }
-
-  // B14/F5: collect per-row failures so the caller can surface partial-success details.
-  const rowErrors: Array<{ groupName: string; message: string }> = [];
 
   if (isSupabaseConfigured()) {
     const supabase = createSupabaseServiceClient();
@@ -2116,12 +2301,17 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
         source: "admin",
         private_notes: privateNotesPayload(group.privateNotes, group.flow),
         eligible_events: group.eligibleEvents,
+        ...rsvpDeadlineColumnPatch(group.rsvpDeadline, undefined),
       };
       let { data: insertedGroup, error } = await supabase
         .from("invitation_groups")
         .insert({ ...groupInsert, flow: group.flow })
         .select("id")
         .single();
+      if (error && group.rsvpDeadline && missingRsvpDeadlineColumn(error)) {
+        rowErrors.push({ groupName: group.groupName, message: RSVP_DEADLINE_MIGRATION_ERROR });
+        continue;
+      }
       if (error && missingFlowColumn(error)) {
         // B8: log loudly when missing columns
         console.error(
@@ -2138,6 +2328,11 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
         error = retry.error;
       }
       if (error) {
+        // PL-5: a fixed code taken since the check above is never suffixed.
+        if (error.code === "23505" && fixedCodes.has(group.code)) {
+          rowErrors.push({ groupName: group.groupName, message: `Code ${group.code} is already used.` });
+          continue;
+        }
         // B6: on code unique-violation, retry with suffix
         if (error.code === "23505") {
           let retried: typeof insertedGroup = null;
@@ -2183,6 +2378,8 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
         invitation_group_id: group.id,
         status: "pending",
         event_attendance: {},
+        // PL-5: the note column, e.g. "Dietary: 1 vegetarian".
+        ...(group.rsvp.message ? { message: group.rsvp.message } : {}),
       });
       if (rsvpError) {
         rowErrors.push({ groupName: group.groupName, message: `RSVP insert failed: ${rsvpError.message}` });
@@ -2192,11 +2389,15 @@ export async function upsertInvitationFromCsvRows(rows: GuestCsvRow[]) {
       }
 
       // B1 + B14: check guest insert error
+      // PL-3: one insert for the group, with created_at 1 ms apart so the
+      // CSV's order (guest 1 first) is the order they are read back in.
+      const insertedAt = Date.now();
       const { error: guestsError } = await supabase.from("guests").insert(
-        group.guests.map((guest) => ({
+        group.guests.map((guest, index) => ({
           invitation_group_id: group.id,
           name: guest.name,
           meal_preference: guest.mealPreference,
+          created_at: new Date(insertedAt + index).toISOString(),
         })),
       );
       if (guestsError) {
@@ -2219,6 +2420,28 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
   const existing = normalized.code
     ? await getInvitationByCode(normalized.code)
     : null;
+  // PL-8: a new group on a link with personal links gets a random code on it,
+  // the simple form's dinner, and the link's deadline unless one is set here.
+  if (!existing && input.personalLinkId) {
+    const content = await getPublishedContent();
+    const host = content.publicInviteTypes.find(
+      (inviteType) =>
+        inviteType.id === input.personalLinkId && hasPersonalLinks(inviteType),
+    );
+    if (!host) {
+      throw new Error(
+        "That link can't have personal links: publish it as an enabled simple-form link with its own address first.",
+      );
+    }
+    let code = generatePersonalLinkCode(host);
+    while (await getInvitationByCode(code)) code = generatePersonalLinkCode(host);
+    normalized.code = code;
+    normalized.flow = "generic";
+    normalized.eligibleEvents = ["dinner"];
+    normalized.travelOverrides = undefined;
+    normalized.rsvpDeadline =
+      normalized.rsvpDeadline || normalizeDeadlineIso(host.rsvpDeadline);
+  }
   const now = new Date().toISOString();
 
   if (isSupabaseConfigured()) {
@@ -2468,7 +2691,8 @@ export async function upsertInvitationByAdmin(input: AdminInvitationUpsert) {
   }
 
   const id = `invite-admin-${normalized.groupName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-  const code = generateInviteCode(normalized.groupName);
+  // PL-8: a personal code chosen above (as the Supabase path does).
+  const code = normalized.code || generateInviteCode(normalized.groupName);
   const invitation: InvitationGroup = {
     id,
     code,
@@ -2860,7 +3084,13 @@ export function calculateStats(
 
 function mapInvitationRow(row: any): InvitationGroup {
   const rsvp = Array.isArray(row.rsvps) ? row.rsvps[0] : row.rsvps;
-  const guests = (row.guests || []).map((guest: any) => ({
+  // PL-3: guests in the order they were added (an update can move a row in
+  // the database's own order, which would make the second guest the first).
+  // A stable sort, so guests added together keep the order they come in.
+  const guestRows = [...(row.guests || [])].sort((a: any, b: any) =>
+    String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")),
+  );
+  const guests = guestRows.map((guest: any) => ({
     id: String(guest.id),
     invitationGroupId: String(row.id),
     name: String(guest.name),

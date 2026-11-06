@@ -11,6 +11,9 @@ import { LanguageToggle } from "@/components/site/language-toggle";
 import type { Language } from "@/lib/types";
 
 const OPENED_KEY = "ej-invite-opened";
+// PL-6: the page a guest left by one of the site's own links (menu, Discover
+// Medan, travel). Coming straight back to it skips its cover once.
+const RETURN_KEY = "ej-invite-return";
 
 /**
  * Labels the cover needs. The invite pages pass the whole `copy[language]`
@@ -22,6 +25,8 @@ export type OpeningCoverLabels = {
   tapTakeLetter: string;
   tapUnfold: string;
   weddingOf: string;
+  /** PL-6: "Dear" / "Kepada Yth." above a personal link's guest name. */
+  coverGreeting: string;
 };
 
 function hasBeenOpened(): boolean {
@@ -44,6 +49,50 @@ function markOpened() {
   }
 }
 
+// PL-6: a personal link's cover shows on every visit, refreshes included;
+// only coming back from one of the site's own pages skips it.
+function isReturnVisit(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (new URLSearchParams(window.location.search).has("replay")) return false;
+    return window.sessionStorage.getItem(RETURN_KEY) === window.location.pathname;
+  } catch {
+    return false;
+  }
+}
+
+function clearReturnVisit() {
+  try {
+    window.sessionStorage.removeItem(RETURN_KEY);
+  } catch {
+    // Nothing to clear when storage is blocked.
+  }
+}
+
+/**
+ * PL-6: notes when the guest follows one of the site's own links away from
+ * this page, so the cover is skipped once when they come back to it.
+ */
+export function useCoverReturnMarker(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    function remember(event: MouseEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      const anchor = target?.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if (anchor.origin !== window.location.origin) return;
+      if (anchor.pathname === window.location.pathname) return;
+      try {
+        window.sessionStorage.setItem(RETURN_KEY, window.location.pathname);
+      } catch {
+        // Storage blocked: the cover simply shows again on return.
+      }
+    }
+    document.addEventListener("click", remember, true);
+    return () => document.removeEventListener("click", remember, true);
+  }, [enabled]);
+}
+
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -62,6 +111,7 @@ function neverOnServer() {
 export function OpeningCover({
   variant,
   coupleName,
+  guestName,
   language,
   onLanguageChange,
   labels,
@@ -70,6 +120,11 @@ export function OpeningCover({
 }: {
   variant: "moongate" | "envelope";
   coupleName: string;
+  /**
+   * PL-6: a personal link's guest ("Bp. Hadi & Istri"), shown on the cover.
+   * Their cover shows on every visit (see isReturnVisit).
+   */
+  guestName?: string;
   language: Language;
   onLanguageChange: (language: Language) => void;
   labels: OpeningCoverLabels;
@@ -80,7 +135,14 @@ export function OpeningCover({
   // useSyncExternalStore keeps the sessionStorage read hydration-safe: the
   // server snapshot renders the cover, and the client re-renders without it
   // immediately after hydration (one-frame flash on repeat visits).
-  const skip = useSyncExternalStore(noopSubscribe, hasBeenOpened, neverOnServer);
+  const skip = useSyncExternalStore(
+    noopSubscribe,
+    guestName ? isReturnVisit : hasBeenOpened,
+    neverOnServer,
+  );
+  const guest = guestName
+    ? { label: labels.coverGreeting, name: guestName }
+    : undefined;
   const [mounted, setMounted] = useState(true);
   const interactedRef = useRef(false);
   const skipUnlockedRef = useRef(false);
@@ -101,9 +163,11 @@ export function OpeningCover({
   useEffect(() => {
     if (skip && !skipUnlockedRef.current) {
       skipUnlockedRef.current = true;
+      // PL-6: a return visit skips the cover once; a refresh shows it again.
+      if (guestName) clearReturnVisit();
       onOpened();
     }
-  }, [skip, onOpened]);
+  }, [skip, onOpened, guestName]);
 
   if (skip || !mounted) return null;
 
@@ -120,6 +184,7 @@ export function OpeningCover({
       ) : null}
       {variant === "moongate" ? (
         <MoongateCover
+          guest={guest}
           labels={labels}
           onFirstInteraction={handleFirstInteraction}
           onFinish={finish}
@@ -127,6 +192,7 @@ export function OpeningCover({
       ) : (
         <EnvelopeCover
           coupleName={coupleName}
+          guest={guest}
           labels={labels}
           onFirstInteraction={handleFirstInteraction}
           onFinish={finish}
@@ -140,11 +206,25 @@ export function OpeningCover({
 /* Moongate                                                                   */
 /* -------------------------------------------------------------------------- */
 
+// PL-6: "Dear" / "Kepada Yth." and the guest's name on a personal link's cover.
+type CoverGuest = { label: string; name: string };
+
+function CoverGuestName({ guest, className }: { guest: CoverGuest; className: string }) {
+  return (
+    <div className={className}>
+      <p className="cover-guest-label">{guest.label}</p>
+      <p className="cover-guest-name serif">{guest.name}</p>
+    </div>
+  );
+}
+
 function MoongateCover({
+  guest,
   labels,
   onFirstInteraction,
   onFinish,
 }: {
+  guest?: CoverGuest;
   labels: OpeningCoverLabels;
   onFirstInteraction: () => void;
   onFinish: () => void;
@@ -186,6 +266,7 @@ function MoongateCover({
           if (event.propertyName === "transform") finishOnce();
         }}
       />
+      {guest ? <CoverGuestName guest={guest} className="moongate-guest" /> : null}
       <button
         type="button"
         className="moongate-monogram"
@@ -208,11 +289,13 @@ type EnvelopeStage = 0 | 1 | 2 | 3;
 
 function EnvelopeCover({
   coupleName,
+  guest,
   labels,
   onFirstInteraction,
   onFinish,
 }: {
   coupleName: string;
+  guest?: CoverGuest;
   labels: OpeningCoverLabels;
   onFirstInteraction: () => void;
   onFinish: () => void;
@@ -291,6 +374,12 @@ function EnvelopeCover({
       data-stage={stage}
       data-flap-behind={flapBehind ? "1" : "0"}
     >
+      {guest ? (
+        <CoverGuestName
+          guest={guest}
+          className={`env-guest${stage > 0 ? " is-fading" : ""}`}
+        />
+      ) : null}
       <button
         type="button"
         className="env-scene-button"

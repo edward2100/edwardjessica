@@ -327,10 +327,43 @@ export interface SimpleRsvpSubmission {
   attending: boolean;
   /** 1..link maxGuests; always 1 for a "No". */
   guestCount: number;
+  /** PL-4: every person's name, the guest first; absent from older pages. */
+  guestNames?: string[];
   dietary?: string;
   /** Honeypot: people never fill it. */
   website?: string;
   /** The page language, used for the confirmation email. */
+  language: Language;
+}
+
+/**
+ * PL-2: a personal link's invitation as its page sees it: no email, phone
+ * or notes.
+ */
+export interface PersonalInvite {
+  code: string;
+  /** The name as invited, e.g. "Bp. Hadi & Istri". */
+  displayName: string;
+  guestNames: string[];
+  maxGuests: number;
+  status: RsvpStatus;
+  /** The "Dietary: …" note without its label; "" when there is none. */
+  dietary: string;
+}
+
+/** PL-3: a validated POST /api/rsvp/personal body. */
+export interface PersonalRsvpSubmission {
+  code: string;
+  attending: boolean;
+  /** 1..the invitation's maxGuests; always 1 for a "No". */
+  guestCount: number;
+  /** One name per person when attending. */
+  guestNames: string[];
+  dietary?: string;
+  /** Optional; only for the confirmation email. */
+  email?: string;
+  /** Honeypot: people never fill it. */
+  website?: string;
   language: Language;
 }
 
@@ -393,6 +426,11 @@ export interface AdminInvitationUpsert {
    * deadline); absent = keep the stored value (none for a new invitation).
    */
   rsvpDeadline?: string | null;
+  /**
+   * PL-8: new groups only: the id of a simple link with personal links. The
+   * group gets a random personal link on it (/JESSmarriED-2295A3FMJQWX).
+   */
+  personalLinkId?: string;
 }
 
 export interface RsvpHistoryItem {
@@ -449,4 +487,17 @@ export interface GuestCsvRow {
   events: EventKey[];
   privateNotesEn?: string;
   privateNotesId?: string;
+  /**
+   * PL-5: a fixed invite code (e.g. a personal link's
+   * JESSMARRIED-2295A3FMJQWX). Rows sharing a code are one group; without
+   * it, rows group by name.
+   */
+  code?: string;
+  /**
+   * PL-8: the address of a simple link with personal links ("JESSmarriED"):
+   * the group gets a new random personal link on it. Ignored with a code.
+   */
+  link?: string;
+  /** PL-5: the RSVP note the group starts with, e.g. "Dietary: 1 vegetarian". */
+  note?: string;
 }

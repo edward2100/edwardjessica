@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import type { Metadata, Route } from "next";
+import { notFound, redirect } from "next/navigation";
 import { InvitePage } from "@/components/site/invite-page";
 import { SelfRegisterInvitePage } from "@/components/site/self-register-invite-page";
 import {
@@ -10,9 +10,11 @@ import {
 import { getSiteUrl } from "@/lib/env";
 import { getLanguagePreference } from "@/lib/language-preference-server";
 import {
+  findPersonalLinkByCode,
   findPublicInviteTypeByCode,
   getEffectiveRsvpDeadline,
   normalizeInviteCode,
+  personalLinkPath,
   toGuestContent,
   toGuestInvitation,
   toLinkGuestContent,
@@ -87,6 +89,12 @@ export default async function Page({
     );
   }
   if (!invitation) notFound();
+  // PL-1: a personal link's invitation opens at its own address (simple
+  // form, no email code), which records the visit there.
+  const personalLink = findPersonalLinkByCode(content, invitation.code);
+  if (personalLink) {
+    redirect(personalLinkPath(personalLink, invitation.code) as Route);
+  }
   await recordInviteOpen(normalizedCode);
 
   // E1-7: strip PII fields before serialising the invitation into the client component props.

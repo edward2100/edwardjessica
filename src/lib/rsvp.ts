@@ -7,6 +7,7 @@ import type {
   LateResponse,
   LateRsvpSetting,
   MealPreference,
+  PersonalInvite,
   PublicInviteType,
   RsvpContact,
   RsvpHistoryItem,
@@ -89,6 +90,95 @@ export function isSimplePublicInviteType(
   inviteType: Pick<PublicInviteType, "form"> | null | undefined,
 ) {
   return inviteType?.form === "simple";
+}
+
+// PL-1: personal links on a simple-form link with a custom address:
+// /<address>-<code> (/JESSmarriED-2295A3FMJQWX) opens the one invitation
+// whose code is that address in capitals followed by the same code
+// (JESSMARRIED-2295A3FMJQWX), made in admin (New Group, or a CSV import with
+// a link column). Matched in any case.
+// PL-8: the code is 12 random characters, so one guest's address says nothing
+// about another's and none can be guessed.
+export const PERSONAL_CODE_LENGTH = 12;
+const PERSONAL_LINK_SUFFIX = new RegExp(`^[A-Z0-9]{${PERSONAL_CODE_LENGTH}}$`);
+// No 0/O or 1/I/L, so a code read aloud or retyped isn't misread.
+const PERSONAL_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+
+/** PL-8: a link can have personal links when enabled, simple, with an address. */
+export function hasPersonalLinks(
+  inviteType: Pick<PublicInviteType, "isEnabled" | "form" | "path">,
+) {
+  return Boolean(
+    inviteType.isEnabled &&
+      isSimplePublicInviteType(inviteType) &&
+      inviteType.path,
+  );
+}
+
+/** PL-1: the enabled simple link that owns a personal code, if any. */
+export function findPersonalLinkByCode(content: WeddingContent, code: string) {
+  const normalized = normalizeInviteCode(code);
+  return content.publicInviteTypes.find((inviteType) => {
+    if (!hasPersonalLinks(inviteType)) return false;
+    const prefix = `${normalizeInviteCode(inviteType.path!)}-`;
+    return (
+      normalized.startsWith(prefix) &&
+      PERSONAL_LINK_SUFFIX.test(normalized.slice(prefix.length))
+    );
+  });
+}
+
+/** PL-8: the link with personal links at an address, e.g. "JESSmarriED". */
+export function findPersonalLinkByPath(content: WeddingContent, path: string) {
+  const wanted = normalizeInviteCode(path.replace(/^\/+/, ""));
+  return content.publicInviteTypes.find(
+    (inviteType) =>
+      hasPersonalLinks(inviteType) &&
+      normalizeInviteCode(inviteType.path!) === wanted,
+  );
+}
+
+/** PL-8: a new random personal code on a link: JESSMARRIED-2295A3FMJQWX. */
+export function generatePersonalLinkCode(link: Pick<PublicInviteType, "path">) {
+  const alphabet = PERSONAL_CODE_ALPHABET;
+  // Bytes from the last whole multiple of the alphabet up are skipped, so
+  // every character is equally likely.
+  const limit = 256 - (256 % alphabet.length);
+  const bytes = new Uint8Array(PERSONAL_CODE_LENGTH * 2);
+  let suffix = "";
+  while (suffix.length < PERSONAL_CODE_LENGTH) {
+    globalThis.crypto.getRandomValues(bytes);
+    for (const byte of bytes) {
+      if (byte < limit && suffix.length < PERSONAL_CODE_LENGTH) {
+        suffix += alphabet[byte % alphabet.length];
+      }
+    }
+  }
+  return `${normalizeInviteCode(link.path ?? "")}-${suffix}`;
+}
+
+/** PL-1: the personal link a root address opens, as { link, code }. */
+export function resolvePersonalLinkSlug(content: WeddingContent, slug: string) {
+  const code = normalizeInviteCode(slug);
+  const link = findPersonalLinkByCode(content, code);
+  return link ? { link, code } : undefined;
+}
+
+/** PL-1: JESSMARRIED-2295A3FMJQWX -> /JESSmarriED-2295A3FMJQWX (the link's capitals). */
+export function personalLinkPath(
+  link: Pick<PublicInviteType, "path">,
+  code: string,
+) {
+  const prefix = `${normalizeInviteCode(link.path ?? "")}-`;
+  return `/${link.path}-${normalizeInviteCode(code).slice(prefix.length)}`;
+}
+
+/** PL-8: an invitation's own address: its personal link, else /invite/<CODE>. */
+export function invitationPath(content: WeddingContent, code: string) {
+  const link = findPersonalLinkByCode(content, code);
+  return link
+    ? personalLinkPath(link, code)
+    : `/invite/${encodeURIComponent(code)}`;
 }
 
 export function getPublicInviteTypeById(content: WeddingContent, id: string) {
@@ -274,6 +364,24 @@ export function toGuestInvitation(invitation: InvitationGroup): InvitationGroup 
   };
 }
 
+// PL-2: the "Dietary: …" note the simple forms save, without its label.
+export function dietaryFromRsvpMessage(message: string | undefined) {
+  const match = message?.match(/^Dietary:\s*([\s\S]*)$/);
+  return match ? match[1].trim() : "";
+}
+
+// PL-2: a personal link's page gets these fields only.
+export function toPersonalInvite(invitation: InvitationGroup): PersonalInvite {
+  return {
+    code: invitation.code,
+    displayName: invitation.groupName,
+    guestNames: invitation.guests.map((guest) => guest.name),
+    maxGuests: invitation.maxGuests,
+    status: invitation.rsvp.status,
+    dietary: dietaryFromRsvpMessage(invitation.rsvp.message),
+  };
+}
+
 // CL-8: whole days left to RSVP (rounded up, at least 1), or null once RSVP
 // is closed. Built on isRsvpClosed so the countdown hides exactly when the
 // closed state starts (no gap at the deadline instant).
@@ -432,26 +540,75 @@ export function validateSelfRegistration(
 
 // SF-4: the longest dietary note kept from the simple form.
 export const SIMPLE_DIETARY_MAX_LENGTH = 200;
+// PL-4: the longest name kept for one person.
+export const GUEST_NAME_MAX_LENGTH = 120;
+
+// SF-4: a "No" is always 1 person, whatever count was sent.
+function declinedIsOnePerson(value: unknown) {
+  return value &&
+    typeof value === "object" &&
+    (value as Record<string, unknown>).attending === false
+    ? { ...(value as Record<string, unknown>), guestCount: 1 }
+    : value;
+}
+
+function guestLimit(maxGuests: number) {
+  return Math.min(10, Math.max(1, Math.floor(Number(maxGuests)) || 1));
+}
+
+const dietaryField = z
+  .string()
+  .trim()
+  .max(SIMPLE_DIETARY_MAX_LENGTH)
+  .optional()
+  .transform((value) => value || undefined);
+
+const languageField = z
+  .unknown()
+  .transform((value): Language => (value === "id" ? "id" : "en"));
+
+const guestNamesField = z
+  .array(z.string().trim().max(GUEST_NAME_MAX_LENGTH))
+  .max(10);
+
+// PL-4: "Please enter guest 2's name." for each blank name from `from` up to
+// the party size. The issue path ["guestNames", index] tells the form which
+// field to mark.
+function requireGuestNames(
+  value: { attending: boolean; guestCount: number; guestNames?: string[] },
+  context: z.RefinementCtx,
+  from: number,
+) {
+  if (!value.attending || !value.guestNames) return;
+  for (let index = from; index < value.guestCount; index += 1) {
+    if (!value.guestNames[index]) {
+      context.addIssue({
+        code: "custom",
+        path: ["guestNames", index],
+        message: `Please enter guest ${index + 1}'s name.`,
+      });
+    }
+  }
+}
 
 /**
  * SF-4: the simple form's fields, shared by the form (inline errors) and
  * POST /api/rsvp/simple. A "No" is always 1 person, whatever count was sent;
  * a "Yes" is 1..the link's maxGuests. The email must be one plain address
- * (normalizeContactEmail); a blank dietary note is dropped.
+ * (normalizeContactEmail); a blank dietary note is dropped. PL-4: guest 1 is
+ * `name`; guests 2+ need a name in `guestNames` (older pages send none).
  */
 export function simpleRsvpSchema(maxGuests: number) {
-  const limit = Math.min(10, Math.max(1, Math.floor(Number(maxGuests)) || 1));
   const phoneMessage = "Please enter your WhatsApp number.";
   return z.preprocess(
-    (value) =>
-      value &&
-      typeof value === "object" &&
-      (value as Record<string, unknown>).attending === false
-        ? { ...(value as Record<string, unknown>), guestCount: 1 }
-        : value,
+    declinedIsOnePerson,
     z.object({
       accessCode: z.string().trim().min(1),
-      name: z.string().trim().min(1, "Please enter your name.").max(120),
+      name: z
+        .string()
+        .trim()
+        .min(1, "Please enter your name.")
+        .max(GUEST_NAME_MAX_LENGTH),
       phone: z
         .string()
         .trim()
@@ -470,18 +627,50 @@ export function simpleRsvpSchema(maxGuests: number) {
         return email;
       }),
       attending: z.boolean({ message: "Please tell us if you can attend." }),
-      guestCount: z.coerce.number().int().min(1).max(limit),
-      dietary: z
-        .string()
-        .trim()
-        .max(SIMPLE_DIETARY_MAX_LENGTH)
-        .optional()
-        .transform((value) => value || undefined),
+      guestCount: z.coerce.number().int().min(1).max(guestLimit(maxGuests)),
+      guestNames: guestNamesField.optional(),
+      dietary: dietaryField,
       website: z.string().optional(),
-      language: z
-        .unknown()
-        .transform((value): Language => (value === "id" ? "id" : "en")),
-    }),
+      language: languageField,
+    })
+      .superRefine((value, context) => requireGuestNames(value, context, 1)),
+  );
+}
+
+/**
+ * PL-3: a personal link's RSVP, shared by its form and POST
+ * /api/rsvp/personal: yes/no, the party size (1..the invitation's maxGuests),
+ * one name per person when attending, an optional dietary note, and an
+ * optional email for the confirmation (blank = none).
+ */
+export function personalRsvpSchema(maxGuests: number) {
+  return z.preprocess(
+    declinedIsOnePerson,
+    z.object({
+      code: z.string().trim().min(1),
+      attending: z.boolean({ message: "Please tell us if you can attend." }),
+      guestCount: z.coerce.number().int().min(1).max(guestLimit(maxGuests)),
+      guestNames: guestNamesField.default([]),
+      dietary: dietaryField,
+      email: z
+        .string()
+        .optional()
+        .transform((value, context) => {
+          if (!value?.trim()) return undefined;
+          const email = normalizeContactEmail(value);
+          if (!email) {
+            context.addIssue({
+              code: "custom",
+              message: "Please enter a valid email address.",
+            });
+            return z.NEVER;
+          }
+          return email;
+        }),
+      website: z.string().optional(),
+      language: languageField,
+    })
+      .superRefine((value, context) => requireGuestNames(value, context, 0)),
   );
 }
 
@@ -900,6 +1089,45 @@ function adminGuestLines(invitation: InvitationGroup) {
     .join("\n");
 }
 
+// PL-8: "Sabtu, 12 Desember 2026" for an event's yyyy-mm-dd date.
+function indonesianEventDate(date: string | undefined) {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (!date || Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
+}
+
+// PL-8: a personal link's invitation, in Indonesian like the page it opens:
+// the reception's date and venue (no times) and the guest's own address.
+function personalInvitationMessage(
+  invitation: InvitationGroup,
+  content: WeddingContent,
+  inviteUrl: string,
+) {
+  const dinner = content.events.find((eventItem) => eventItem.key === "dinner");
+  const date = indonesianEventDate(dinner?.date);
+  return [
+    "Kepada Yth.",
+    invitation.groupName,
+    "",
+    "Dengan penuh sukacita, kami mengundang Bapak/Ibu untuk hadir di resepsi pernikahan Edward & Jessica:",
+    "",
+    ...(date ? [date] : []),
+    content.venue.name,
+    "",
+    "Mohon konfirmasi kehadiran Bapak/Ibu melalui tautan berikut:",
+    inviteUrl,
+    "",
+    "Terima kasih.",
+    "Edward & Jessica",
+  ].join("\n");
+}
+
 export function buildAdminWhatsAppMessage({
   invitation,
   content,
@@ -914,7 +1142,8 @@ export function buildAdminWhatsAppMessage({
   now?: Date;
 }) {
   const siteUrl = baseUrl.replace(/\/$/, "");
-  const inviteUrl = `${siteUrl}/invite/${encodeURIComponent(invitation.code)}`;
+  // PL-8: a personal link's guest gets their /JESSmarriED-… address.
+  const inviteUrl = `${siteUrl}${invitationPath(content, invitation.code)}`;
   const travelUrl = `${siteUrl}/travel-accommodation?code=${encodeURIComponent(
     invitation.code,
   )}`;
@@ -968,6 +1197,10 @@ We will let you know the final room plan, pick-up time, and departure transport 
 
 With love,
 Edward & Jessica`;
+  }
+
+  if (findPersonalLinkByCode(content, invitation.code)) {
+    return personalInvitationMessage(invitation, content, inviteUrl);
   }
 
   return `${invitation.greeting}

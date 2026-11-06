@@ -223,6 +223,24 @@ textarea {
   color: rgba(255, 255, 255, 0.86);
 }
 
+/* PL-6: a personal link's guest above the couple: "Kepada Yth." stays the
+   small kicker, the name itself is large enough to read at a glance. Left
+   aligned with the rest of the hero on phones, centred on desktop (below). */
+.hero-guest-name {
+  max-width: 760px;
+  margin-top: 8px;
+  font-size: clamp(1.75rem, 5vw, 2.6rem);
+  line-height: 1.2;
+  color: white;
+  text-wrap: balance;
+}
+.hero-guest-rule {
+  width: 44px;
+  height: 1px;
+  margin-top: 18px;
+  background: rgba(217, 185, 143, 0.9);
+}
+
 /* Desktop hero: the whole group (language toggle, greeting, title, subtitle,
    button) sits in the vertical middle, horizontally centered, with the couple
    name on a single line. Mobile (≤860px) keeps the bottom-anchored
@@ -257,6 +275,10 @@ textarea {
   .hero-meta {
     margin-inline: auto;
     text-align: center;
+  }
+  .hero-guest-name,
+  .hero-guest-rule {
+    margin-inline: auto;
   }
 }
 
@@ -2254,6 +2276,45 @@ textarea {
   50% {
     transform: scale(1.06);
   }
+}
+
+/* PL-6: a personal link's guest on the cover ("Kepada Yth." + name). On the
+   moon gate it is placed above the monogram without moving it, so the
+   monogram still covers the resting hole at the centre; long names grow up. */
+.moongate-guest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(50% + 84px);
+  z-index: 2;
+  padding: 0 24px;
+  text-align: center;
+  transition: opacity 0.25s ease;
+}
+.moongate-stage.is-blooming .moongate-guest {
+  opacity: 0;
+}
+.env-guest {
+  text-align: center;
+  padding: 0 24px;
+  transition: opacity 0.3s ease;
+}
+.env-guest.is-fading {
+  opacity: 0;
+}
+.cover-guest-label {
+  font-size: 0.74rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cover-guest-name {
+  max-width: 640px;
+  margin: 10px auto 0;
+  font-size: clamp(1.7rem, 6.5vw, 2.6rem);
+  line-height: 1.2;
+  color: var(--ink);
+  text-wrap: balance;
 }
 
 /* ---- Envelope ---- */
