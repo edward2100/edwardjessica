@@ -26,6 +26,11 @@ test("personal invite link greets the guest", async ({ page }) => {
   await page.goto("/invite/EJ26-HARDWIN");
   await expect(page.locator("h1")).toHaveText(/Edward\s*&\s*Jessica/i);
   await expect(page.getByText("Dear Mr. Hardwin & Family", { exact: true })).toBeVisible();
+  // DC-1: an invitation that includes the dinner shows its dress code.
+  await page.locator("#dress-code").scrollIntoViewIfNeeded();
+  await expect(
+    page.locator("#dress-code").getByText(en.dressCodeText, { exact: true }),
+  ).toBeVisible();
 });
 
 test("admin preview login reaches dashboard", async ({ page }) => {

@@ -25,6 +25,7 @@ import { LateRsvpNotice } from "@/components/site/late-rsvp-notice";
 import { OpeningCover } from "@/components/site/opening-cover";
 import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
 import { BrideGroomSection } from "@/components/site/bride-groom-section";
+import { DressCodeSection } from "@/components/site/dress-code-section";
 import { SaveDateSection } from "@/components/site/save-date-section";
 import { SlotImage } from "@/components/site/slot-image";
 import { StorySection } from "@/components/site/story-section";
@@ -444,6 +445,13 @@ export function InvitePage({
           </div>
         </div>
       </section>
+
+      {/* DC-1: what to wear to the dinner reception (dinner guests only). */}
+      <DressCodeSection
+        event={eligibleEvents.find((eventItem) => eventItem.key === "dinner")}
+        language={language}
+        labels={c}
+      />
 
       <StorySection content={content} language={language} />
 

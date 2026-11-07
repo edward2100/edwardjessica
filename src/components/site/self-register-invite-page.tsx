@@ -29,6 +29,7 @@ import {
 import { PhoneCountryInput } from "@/components/site/phone-country-input";
 import { RsvpContactLinks } from "@/components/site/rsvp-contact-links";
 import { BrideGroomSection } from "@/components/site/bride-groom-section";
+import { DressCodeSection } from "@/components/site/dress-code-section";
 import { SaveDateSection } from "@/components/site/save-date-section";
 import {
   SimpleRsvpForm,
@@ -646,6 +647,13 @@ export function SelfRegisterInvitePage({
           </div>
         </section>
       ) : null}
+
+      {/* DC-1: what to wear to the dinner reception. */}
+      <DressCodeSection
+        event={content.events.find((eventItem) => eventItem.key === "dinner")}
+        language={language}
+        labels={c}
+      />
 
       <StorySection content={content} language={language} />
 
