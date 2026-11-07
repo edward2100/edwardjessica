@@ -2722,3 +2722,25 @@ textarea {
     align-self: center;
   }
 }
+
+/* DC-1: dress code section (dinner reception), a short description. */
+.dress-code-title {
+  text-wrap: balance;
+}
+
+.dress-code-nowrap {
+  white-space: nowrap;
+}
+
+.dress-code-event {
+  margin-top: 14px;
+}
+
+.dress-code-text {
+  max-width: 36rem;
+  margin: 0 auto;
+  font-size: clamp(1.02rem, 2.4vw, 1.15rem);
+  line-height: 1.65;
+  text-align: center;
+  text-wrap: pretty;
+}

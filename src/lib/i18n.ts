@@ -35,6 +35,12 @@ export const copy = {
     weddingVenueCity: "Medan, Indonesia",
     schedule: "Schedule",
     scheduleTitle: "The Day’s Events",
+    // DC-1: the dinner reception dress code section. The no-break space
+    // keeps "Cocktail /" together when the title wraps on a phone.
+    dressCode: "Dress Code",
+    dressCodeTitle: "Cocktail\u00a0/ Semi-formal",
+    dressCodeText:
+      "We ask that you wear semi-formal attire, such as a cocktail-length or midi dress, dressy separates, or a suit or dress shirt (tie optional).",
     story: "Our Story",
     gallery: "Gallery",
     galleryTitle: "Our Moments",
@@ -257,6 +263,10 @@ export const copy = {
     weddingVenueCity: "Medan, Indonesia",
     schedule: "Jadwal",
     scheduleTitle: "Rangkaian Acara",
+    dressCode: "Aturan Berpakaian",
+    dressCodeTitle: "Cocktail\u00a0/ Semi-formal",
+    dressCodeText:
+      "Kami mohon Anda mengenakan busana semi-formal, seperti gaun cocktail selutut atau midi, padu padan atasan dan bawahan yang rapi, atau jas maupun kemeja formal (dasi opsional).",
     story: "Kisah Kami",
     gallery: "Galeri",
     galleryTitle: "Momen Kami",

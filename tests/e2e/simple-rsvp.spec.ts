@@ -80,6 +80,12 @@ test("/JESSmarriED: the full page with The Day's Events, and an RSVP without an 
   }
   await expect(page.locator('a[href="/calendar.ics"]')).toHaveCount(2);
 
+  // DC-1: the dinner's dress code, in a few words.
+  const dressCode = page.locator("#dress-code");
+  await dressCode.scrollIntoViewIfNeeded();
+  await expect(dressCode.getByRole("heading", { name: /Cocktail\s\/ Semi-formal/ })).toBeVisible();
+  await expect(dressCode.getByText(en.dressCodeText, { exact: true })).toBeVisible();
+
   await page.getByRole("button", { name: en.registerRsvp }).click();
   await expect(page.getByRole("heading", { name: en.simpleFormTitle })).toBeVisible();
   await expect(page.getByRole("button", { name: en.sendCode })).toHaveCount(0);
@@ -140,6 +146,7 @@ test("/jessmarried, /JESSMARRIED and /invite/JESSMARRIED keep the standard form"
       await expect(page.getByRole("heading", { name: event.title.en })).toBeVisible();
     }
     await expect(page.locator('a[href="/calendar.ics"]')).toHaveCount(2);
+    await expect(page.locator("#dress-code"), path).toBeVisible();
     await page.getByRole("button", { name: en.registerRsvp }).click();
     await expect(page.getByRole("button", { name: en.sendCode }), path).toBeVisible();
     await expect(page.getByLabel(en.emailAddress)).toBeVisible();
@@ -234,6 +241,10 @@ test("a personal link: the guest's name on the cover and hero, a prefilled RSVP 
     await page.getByRole("button", { name: id.tapToOpen }).click();
     await expect(cover).toHaveCount(0);
     await expect(page.locator(".hero-guest-name")).toHaveText("Bp. Hadi & Istri");
+    // DC-1: personal links show the dinner dress code too (in Indonesian here).
+    await expect(
+      page.locator("#dress-code").getByText(id.dressCodeText, { exact: true }),
+    ).toBeVisible();
 
     await page.getByRole("button", { name: id.registerRsvp }).click();
     await expect(page.getByLabel(id.yourName)).toHaveCount(0);
