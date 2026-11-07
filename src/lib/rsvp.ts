@@ -6,6 +6,7 @@ import type {
   Language,
   LateResponse,
   LateRsvpSetting,
+  MealChoice,
   MealPreference,
   PersonalInvite,
   PublicInviteType,
@@ -370,6 +371,29 @@ export function dietaryFromRsvpMessage(message: string | undefined) {
   return match ? match[1].trim() : "";
 }
 
+// DT-1: "2 vegetarian" -> 2 (the sheet's and the dropdown's note); a bare
+// "Vegetarian" (an older free-text note) means everyone; anything else, none.
+function vegetariansInNote(note: string, people: number) {
+  const counted = note.match(/^(\d+)\s+vegetarian\b/i);
+  if (counted) return Number(counted[1]);
+  return /^vegetarian$/i.test(note.trim()) ? people : 0;
+}
+
+// DT-1: the dropdown's starting choice per possible person: the party's
+// saved choices once it has answered, else the first N from the note.
+function personalMealPreferences(invitation: InvitationGroup): MealChoice[] {
+  const people = Math.max(invitation.maxGuests, invitation.guests.length, 1);
+  const saved = invitation.guests.map((guest) => guest.mealPreference);
+  const vegetarian = saved.some((meal) => meal !== "unset")
+    ? (index: number) => saved[index] === "vegetarian"
+    : (index: number) =>
+        index <
+        vegetariansInNote(dietaryFromRsvpMessage(invitation.rsvp.message), people);
+  return Array.from({ length: people }, (_, index) =>
+    vegetarian(index) ? "vegetarian" : "non_vegetarian",
+  );
+}
+
 // PL-2: a personal link's page gets these fields only.
 export function toPersonalInvite(invitation: InvitationGroup): PersonalInvite {
   return {
@@ -379,6 +403,7 @@ export function toPersonalInvite(invitation: InvitationGroup): PersonalInvite {
     maxGuests: invitation.maxGuests,
     status: invitation.rsvp.status,
     dietary: dietaryFromRsvpMessage(invitation.rsvp.message),
+    mealPreferences: personalMealPreferences(invitation),
   };
 }
 
@@ -567,6 +592,36 @@ const languageField = z
   .unknown()
   .transform((value): Language => (value === "id" ? "id" : "en"));
 
+// DT-1: the dietary dropdown, one choice per person.
+const mealPreferencesField = z
+  .array(z.enum(["vegetarian", "non_vegetarian"]))
+  .max(10)
+  .optional();
+
+// DT-1: with the dropdown's choices, a "Yes" keeps one per person and the
+// note becomes "N vegetarian" (none when nobody is); a "No" keeps neither.
+// Without them (older pages) the typed note stays as it was.
+function withMealSummary<
+  T extends {
+    attending: boolean;
+    guestCount: number;
+    mealPreferences?: MealChoice[];
+    dietary?: string;
+  },
+>(value: T): T {
+  if (!value.mealPreferences) return value;
+  if (!value.attending) {
+    return { ...value, mealPreferences: undefined, dietary: undefined };
+  }
+  const meals = value.mealPreferences.slice(0, value.guestCount);
+  const vegetarians = meals.filter((meal) => meal === "vegetarian").length;
+  return {
+    ...value,
+    mealPreferences: meals,
+    dietary: vegetarians ? `${vegetarians} vegetarian` : undefined,
+  };
+}
+
 const guestNamesField = z
   .array(z.string().trim().max(GUEST_NAME_MAX_LENGTH))
   .max(10);
@@ -597,6 +652,7 @@ function requireGuestNames(
  * a "Yes" is 1..the link's maxGuests. The email must be one plain address
  * (normalizeContactEmail); a blank dietary note is dropped. PL-4: guest 1 is
  * `name`; guests 2+ need a name in `guestNames` (older pages send none).
+ * DT-1: the dropdown's `mealPreferences` (one per person) set the note.
  */
 export function simpleRsvpSchema(maxGuests: number) {
   const phoneMessage = "Please enter your WhatsApp number.";
@@ -629,19 +685,22 @@ export function simpleRsvpSchema(maxGuests: number) {
       attending: z.boolean({ message: "Please tell us if you can attend." }),
       guestCount: z.coerce.number().int().min(1).max(guestLimit(maxGuests)),
       guestNames: guestNamesField.optional(),
+      mealPreferences: mealPreferencesField,
       dietary: dietaryField,
       website: z.string().optional(),
       language: languageField,
     })
-      .superRefine((value, context) => requireGuestNames(value, context, 1)),
+      .superRefine((value, context) => requireGuestNames(value, context, 1))
+      .transform(withMealSummary),
   );
 }
 
 /**
  * PL-3: a personal link's RSVP, shared by its form and POST
  * /api/rsvp/personal: yes/no, the party size (1..the invitation's maxGuests),
- * one name per person when attending, an optional dietary note, and an
- * optional email for the confirmation (blank = none).
+ * one name per person when attending, a dietary choice per person (DT-1;
+ * older pages sent a typed note), and an optional email for the
+ * confirmation (blank = none).
  */
 export function personalRsvpSchema(maxGuests: number) {
   return z.preprocess(
@@ -651,6 +710,7 @@ export function personalRsvpSchema(maxGuests: number) {
       attending: z.boolean({ message: "Please tell us if you can attend." }),
       guestCount: z.coerce.number().int().min(1).max(guestLimit(maxGuests)),
       guestNames: guestNamesField.default([]),
+      mealPreferences: mealPreferencesField,
       dietary: dietaryField,
       email: z
         .string()
@@ -670,7 +730,8 @@ export function personalRsvpSchema(maxGuests: number) {
       website: z.string().optional(),
       language: languageField,
     })
-      .superRefine((value, context) => requireGuestNames(value, context, 0)),
+      .superRefine((value, context) => requireGuestNames(value, context, 0))
+      .transform(withMealSummary),
   );
 }
 

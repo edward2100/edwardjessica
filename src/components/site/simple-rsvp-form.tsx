@@ -12,11 +12,11 @@ import {
   getRsvpWindow,
   normalizeRsvpContact,
   personalRsvpSchema,
-  SIMPLE_DIETARY_MAX_LENGTH,
   simpleRsvpSchema,
 } from "@/lib/rsvp";
 import type {
   Language,
+  MealChoice,
   PersonalInvite,
   PublicInviteType,
   WeddingContent,
@@ -63,10 +63,19 @@ function startingGuestNames(personal: PersonalInvite | undefined, limit: number)
   return Array.from({ length: limit }, (_, index) => personal?.guestNames[index] ?? "");
 }
 
+// DT-1: one dietary choice per possible person; a personal link's start from
+// its saved answer or the invitation's note, everyone else non-vegetarian.
+function startingMeals(personal: PersonalInvite | undefined, limit: number) {
+  return Array.from(
+    { length: limit },
+    (_, index): MealChoice => personal?.mealPreferences?.[index] ?? "non_vegetarian",
+  );
+}
+
 /**
  * SF-3: the simple RSVP form (no email code): name, WhatsApp, email, yes/no,
- * number of people (PL-4: with a name for each) and an optional dietary
- * note. "Yes" is the dinner reception only; the server decides that, the
+ * number of people (PL-4: with a name for each) and, DT-1, a Vegetarian /
+ * Non-vegetarian choice for each person. "Yes" is the dinner reception only; the server decides that, the
  * form never names events. PL-6: on a personal link the names come prefilled
  * from the invitation, there is no name or WhatsApp field, and the email is
  * optional (for a confirmation only).
@@ -118,7 +127,7 @@ export function SimpleRsvpForm({
   const [guestNames, setGuestNames] = useState(() =>
     startingGuestNames(personal, maxGuests),
   );
-  const [dietary, setDietary] = useState(personal?.dietary ?? "");
+  const [meals, setMeals] = useState(() => startingMeals(personal, maxGuests));
   const [website, setWebsite] = useState("");
   // Errors show after the first Send and then follow the fields as they change.
   const [showErrors, setShowErrors] = useState(false);
@@ -155,6 +164,16 @@ export function SimpleRsvpForm({
     setGuestNames((names) => names.map((item, i) => (i === index ? value : item)));
   }
 
+  function setMeal(index: number, value: MealChoice) {
+    setMeals((current) => current.map((item, i) => (i === index ? value : item)));
+  }
+
+  // DT-1: the person a dietary choice is for, as typed so far.
+  function mealLabel(index: number) {
+    const typed = personal || index > 0 ? guestNames[index] : name;
+    return typed?.trim() || guestNameText(c.simpleMealGuest, index + 1);
+  }
+
   function payload() {
     const count = attending ? guestCount : 1;
     if (personal) {
@@ -163,7 +182,7 @@ export function SimpleRsvpForm({
         attending: attending ?? undefined,
         guestCount: count,
         guestNames: attending ? guestNames.slice(0, count) : [],
-        dietary: attending ? dietary : undefined,
+        mealPreferences: attending ? meals.slice(0, count) : undefined,
         email,
         website,
         language,
@@ -178,7 +197,7 @@ export function SimpleRsvpForm({
       guestCount: count,
       // PL-4: everyone's name, the guest first (from the name field).
       guestNames: attending ? [name, ...guestNames.slice(1, count)] : undefined,
-      dietary: attending ? dietary : undefined,
+      mealPreferences: attending ? meals.slice(0, count) : undefined,
       website,
       language,
     };
@@ -446,19 +465,39 @@ export function SimpleRsvpForm({
             })
         : null}
 
+      {/* DT-1: a Vegetarian / Non-vegetarian dropdown for each person. */}
       {attending === true ? (
         <div style={{ marginTop: 14 }}>
-          <label className="form-field" htmlFor="simple-dietary">
-            <span>{c.simpleDietary}</span>
-            <input
-              className="input"
-              id="simple-dietary"
-              maxLength={SIMPLE_DIETARY_MAX_LENGTH}
-              placeholder={c.simpleDietaryPlaceholder}
-              value={dietary}
-              onChange={(event) => setDietary(event.target.value)}
-            />
-          </label>
+          <div className="form-field">
+            <span id="simple-meals-label">{c.simpleDietary}</span>
+          </div>
+          {/* The person's name above their dropdown, so long names (with
+              titles) wrap on phones like every other field. */}
+          <div
+            role="group"
+            aria-labelledby="simple-meals-label"
+            style={{ display: "grid", gap: 12, marginTop: 8 }}
+          >
+            {Array.from({ length: guestCount }, (_, index) => {
+              const id = `simple-meal-${index + 1}`;
+              return (
+                <label className="form-field" htmlFor={id} key={id}>
+                  <span className="muted">{mealLabel(index)}</span>
+                  <select
+                    className="select"
+                    id={id}
+                    value={meals[index] ?? "non_vegetarian"}
+                    onChange={(event) =>
+                      setMeal(index, event.target.value as MealChoice)
+                    }
+                  >
+                    <option value="non_vegetarian">{c.nonVegetarian}</option>
+                    <option value="vegetarian">{c.vegetarian}</option>
+                  </select>
+                </label>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 

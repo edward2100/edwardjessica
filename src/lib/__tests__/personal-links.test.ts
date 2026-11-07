@@ -142,6 +142,26 @@ describe("personal RSVP rules (PL-3, PL-4)", () => {
     ).toMatchObject({ attending: false, guestCount: 1 });
   });
 
+  it("DT-1: the dietary dropdowns set the note: N vegetarian, none when nobody is", () => {
+    const meals = (mealPreferences: string[], extra: Record<string, unknown> = {}) =>
+      personalRsvpSchema(2).parse({ ...yes, mealPreferences, ...extra });
+    expect(meals(["vegetarian", "non_vegetarian"])).toMatchObject({
+      mealPreferences: ["vegetarian", "non_vegetarian"],
+      dietary: "1 vegetarian",
+    });
+    expect(meals(["vegetarian", "vegetarian"]).dietary).toBe("2 vegetarian");
+    expect(meals(["non_vegetarian", "non_vegetarian"]).dietary).toBeUndefined();
+    // One per person who is coming; a stale typed note is replaced.
+    expect(
+      meals(["vegetarian", "vegetarian"], { guestCount: 1, guestNames: ["Bp. Hadi"], dietary: "Vegan" }),
+    ).toMatchObject({ mealPreferences: ["vegetarian"], dietary: "1 vegetarian" });
+    // A No keeps neither.
+    const no = meals(["vegetarian"], { attending: false, guestNames: [] });
+    expect(no.mealPreferences).toBeUndefined();
+    expect(no.dietary).toBeUndefined();
+    expect(personalRsvpSchema(2).safeParse({ ...yes, mealPreferences: ["vegan"] }).success).toBe(false);
+  });
+
   it("the email is optional, but a typed one must be one plain address", () => {
     expect(personalRsvpSchema(2).parse({ ...yes, email: " Hadi@Example.com " }).email).toBe(
       "Hadi@Example.com",
@@ -229,6 +249,8 @@ describe("importing personal links (PL-5)", () => {
     // The note column becomes the RSVP note, shown to the guest as dietary.
     expect(tennis.rsvp.message).toBe("Dietary: 2 vegetarian");
     expect(toPersonalInvite(tennis).dietary).toBe("2 vegetarian");
+    // DT-1: and starts both dietary dropdowns on Vegetarian.
+    expect(toPersonalInvite(tennis).mealPreferences).toEqual(["vegetarian", "vegetarian"]);
     // One name, two seats: one guest now, room for a second.
     const joko = (await getInvitationByCode("JESSMARRIED-7788BCDEFGHJ"))!;
     expect(joko.guests.map((guest) => guest.name)).toEqual(["Pak Joko"]);
@@ -260,6 +282,7 @@ describe("importing personal links (PL-5)", () => {
       maxGuests: 2,
       status: "pending",
       dietary: "",
+      mealPreferences: ["non_vegetarian", "non_vegetarian"],
     });
     expect(JSON.stringify(invite)).not.toContain("628120000001");
     expect(JSON.stringify(invite)).not.toContain("Group:");
@@ -449,6 +472,8 @@ describe("POST /api/rsvp/personal (PL-3)", () => {
       maxGuests: 2,
       status: "attending",
       dietary: "1 vegetarian",
+      // An older page's typed note: the first person starts on Vegetarian.
+      mealPreferences: ["vegetarian", "non_vegetarian"],
     });
     const saved = (await getInvitationByCode("JESSMARRIED-2295A3FMJQWX"))!;
     expect(saved.rsvp).toMatchObject({
@@ -547,6 +572,39 @@ describe("POST /api/rsvp/personal (PL-3)", () => {
       await saveDraftContent({ ...draft, lateRsvp: originalDraft.lateRsvp });
       await publishDraftContent();
     }
+  });
+
+  it("DT-1: a Yes saves each person's dietary choice (counted in admin); a No clears them", async () => {
+    const code = "JESSMARRIED-5317KPRTVXYZ";
+    const vegetarianMeals = async () => (await getAdminSnapshot()).stats.vegetarianMeals;
+    const before = await vegetarianMeals();
+    let response = await post(
+      answer({
+        code,
+        guestNames: ["Bp. Slamet", "Istri"],
+        mealPreferences: ["non_vegetarian", "vegetarian"],
+      }),
+    );
+    expect(response.status).toBe(200);
+    let json = (await response.json()) as { invite: PersonalInvite };
+    expect(json.invite.mealPreferences).toEqual(["non_vegetarian", "vegetarian"]);
+    expect(json.invite.dietary).toBe("1 vegetarian");
+    let saved = (await getInvitationByCode(code))!;
+    expect(saved.guests.map((guest) => [guest.name, guest.mealPreference])).toEqual([
+      ["Bp. Slamet", "non_vegetarian"],
+      ["Istri", "vegetarian"],
+    ]);
+    expect(saved.rsvp.message).toBe("Dietary: 1 vegetarian");
+    expect(await vegetarianMeals()).toBe(before + 1);
+
+    response = await post(answer({ code, attending: false, guestNames: [], mealPreferences: ["vegetarian"] }));
+    json = (await response.json()) as { invite: PersonalInvite };
+    saved = (await getInvitationByCode(code))!;
+    expect(saved.rsvp.status).toBe("declined");
+    expect(saved.rsvp.message).toBeUndefined();
+    expect(saved.guests.map((guest) => guest.mealPreference)).toEqual(["unset", "unset"]);
+    expect(json.invite.mealPreferences).toEqual(["non_vegetarian", "non_vegetarian"]);
+    expect(await vegetarianMeals()).toBe(before);
   });
 });
 

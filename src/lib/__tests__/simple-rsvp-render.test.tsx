@@ -290,6 +290,10 @@ async function choose(selector: string, value: string) {
   });
 }
 
+function value(selector: string) {
+  return container.querySelector<HTMLInputElement | HTMLSelectElement>(selector)?.value;
+}
+
 async function fillContact(name = "Ana Tan", email = "ana@example.com") {
   await typeInto("#simple-name", name);
   await typeInto("#simple-phone", "8123123123");
@@ -358,7 +362,7 @@ describe("simple form in the browser (SF-3)", () => {
     expect(container.querySelector("#rsvp input[type='checkbox']")).toBeNull();
     expect(rsvpText()).not.toMatch(/Meal preference|Guest names|Plus-one|Events/);
     expect(container.querySelector("#simple-count")).toBeNull();
-    expect(container.querySelector("#simple-dietary")).toBeNull();
+    expect(container.querySelector("#simple-meal-1")).toBeNull();
     // Honeypot: off-screen, out of the tab order, hidden from screen readers.
     const honeypot = container.querySelector<HTMLInputElement>("#simple-website")!;
     expect(honeypot.name).toBe("website");
@@ -419,12 +423,17 @@ describe("simple form in the browser (SF-3)", () => {
     );
     expect(options).toEqual(["1", "2"]);
     expect(rsvpText()).toContain("How many people, including you?");
-    expect(rsvpText()).toContain("Dietary requirements (optional)");
-    expect(container.querySelector("#simple-dietary")?.getAttribute("placeholder")).toBe(
-      "e.g. Vegetarian",
-    );
+    // DT-1: a Vegetarian / Non-vegetarian dropdown per person, named as typed.
+    expect(rsvpText()).toContain("Dietary requirements");
+    expect(rsvpText()).not.toContain("(optional)");
+    expect(container.querySelector("label[for='simple-meal-1'] > span")?.textContent).toBe("Ana Tan");
+    expect(
+      [...container.querySelectorAll("#simple-meal-1 option")].map((option) => option.textContent),
+    ).toEqual(["Non-vegetarian", "Vegetarian"]);
+    expect(value("#simple-meal-1")).toBe("non_vegetarian");
     await choose("#simple-count", "2");
-    await typeInto("#simple-dietary", "Vegetarian");
+    expect(container.querySelector("label[for='simple-meal-2'] > span")?.textContent).toBe("Guest 2");
+    await choose("#simple-meal-1", "vegetarian");
 
     // PL-4: a second person needs a name before anything is sent.
     expect(rsvpText()).toContain("Guest 2 name");
@@ -434,6 +443,7 @@ describe("simple form in the browser (SF-3)", () => {
     expect(document.activeElement?.id).toBe("simple-guest-2");
     await typeInto("#simple-guest-2", "Budi Tan");
     expect(rsvpText()).not.toContain("Please enter guest 2's name.");
+    expect(container.querySelector("label[for='simple-meal-2'] > span")?.textContent).toBe("Budi Tan");
 
     await click(buttonNamed("Send RSVP"));
     // Disabled while sending.
@@ -450,7 +460,7 @@ describe("simple form in the browser (SF-3)", () => {
           attending: true,
           guestCount: 2,
           guestNames: ["Ana Tan", "Budi Tan"],
-          dietary: "Vegetarian",
+          mealPreferences: ["vegetarian", "non_vegetarian"],
           website: "",
           language: "en",
         },
@@ -505,20 +515,21 @@ describe("simple form in the browser (SF-3)", () => {
     await fillContact("Budi Santoso", "budi@example.com");
     await click(buttonNamed("Ya, saya hadir"));
     expect(rsvpText()).toContain("Berapa orang yang akan hadir, termasuk Anda?");
-    expect(rsvpText()).toContain("Kebutuhan makanan khusus (opsional)");
-    expect(container.querySelector("#simple-dietary")?.getAttribute("placeholder")).toBe(
-      "mis. Vegetarian",
-    );
-    await typeInto("#simple-dietary", "Tanpa babi");
-    // Changing to No drops the count and the note.
+    expect(rsvpText()).toContain("Kebutuhan makanan");
+    expect(
+      [...container.querySelectorAll("#simple-meal-1 option")].map((option) => option.textContent),
+    ).toEqual(["Non-vegetarian", "Vegetarian"]);
+    await choose("#simple-meal-1", "vegetarian");
+    // Changing to No drops the count and the dietary choices.
     await click(buttonNamed("Maaf, tidak bisa"));
     expect(container.querySelector("#simple-count")).toBeNull();
-    expect(container.querySelector("#simple-dietary")).toBeNull();
+    expect(container.querySelector("#simple-meal-1")).toBeNull();
     await click(buttonNamed("Kirim RSVP"));
 
     const sent = calls.find((call) => call.url === "/api/rsvp/simple")!.body!;
     expect(sent).toMatchObject({ attending: false, guestCount: 1, language: "id" });
     expect(sent).not.toHaveProperty("dietary");
+    expect(sent).not.toHaveProperty("mealPreferences");
     const text = rsvpText();
     expect(text).toContain("Terima kasih, Budi!");
     expect(text).toContain("Terima kasih sudah mengabari kami — kami akan merindukan Anda.");
@@ -564,9 +575,14 @@ describe("simple form in the browser (SF-3)", () => {
     await fillContact();
     await click(buttonNamed("Yes, I'll attend"));
     expect(container.querySelector("#simple-count")).toBeNull();
-    expect(container.querySelector("#simple-dietary")).not.toBeNull();
+    expect(container.querySelector("#simple-meal-1")).not.toBeNull();
+    expect(container.querySelector("#simple-meal-2")).toBeNull();
     await click(buttonNamed("Send RSVP"));
-    expect(calls[0].body).toMatchObject({ attending: true, guestCount: 1 });
+    expect(calls[0].body).toMatchObject({
+      attending: true,
+      guestCount: 1,
+      mealPreferences: ["non_vegetarian"],
+    });
     expect(rsvpText()).toContain("We've received your RSVP for 1 person.");
     expect(rsvpText()).toContain("Need to change anything? Please contact Edward or Jessica.");
     expect(container.querySelector("#rsvp a[href^='https://wa.me']")).toBeNull();
