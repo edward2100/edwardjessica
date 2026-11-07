@@ -33,6 +33,7 @@ const PENDING: PersonalInvite = {
   maxGuests: 2,
   status: "pending",
   dietary: "",
+  mealPreferences: ["non_vegetarian", "non_vegetarian"],
 };
 
 const stubRouter = {
@@ -225,7 +226,16 @@ describe("personal link form in the browser (PL-6)", () => {
   });
 
   it("opens prefilled: no name or WhatsApp fields, the party's names, an optional email", async () => {
-    render(personalPage({ language: "en", personal: { ...PENDING, dietary: "1 vegetarian" } }));
+    render(
+      personalPage({
+        language: "en",
+        personal: {
+          ...PENDING,
+          dietary: "1 vegetarian",
+          mealPreferences: ["vegetarian", "non_vegetarian"],
+        },
+      }),
+    );
     await click(buttonNamed("Confirm Attendance"));
     const text = rsvpText();
     expect(text).not.toContain("Your name");
@@ -241,13 +251,22 @@ describe("personal link form in the browser (PL-6)", () => {
     expect(value("#simple-count")).toBe("2");
     expect(value("#simple-guest-1")).toBe("Bp. Hadi");
     expect(value("#simple-guest-2")).toBe("Istri");
-    expect(value("#simple-dietary")).toBe("1 vegetarian");
+    // DT-1: one dietary dropdown per person, named, starting from the invite.
+    expect(rsvpText()).toContain("Dietary requirements");
+    expect(container.querySelector("label[for='simple-meal-1'] > span")?.textContent).toBe("Bp. Hadi");
+    expect(container.querySelector("label[for='simple-meal-2'] > span")?.textContent).toBe("Istri");
+    expect(
+      [...container.querySelectorAll("#simple-meal-1 option")].map((option) => option.textContent),
+    ).toEqual(["Non-vegetarian", "Vegetarian"]);
+    expect(value("#simple-meal-1")).toBe("vegetarian");
+    expect(value("#simple-meal-2")).toBe("non_vegetarian");
     expect(rsvpText()).toContain("Email (optional, for a confirmation)");
     expect(container.querySelector("#simple-email")?.hasAttribute("required")).toBe(false);
 
-    // One person: guest 2's field goes; a blank guest 1 is caught first.
+    // One person: guest 2's fields go; a blank guest 1 is caught first.
     await choose("#simple-count", "1");
     expect(container.querySelector("#simple-guest-2")).toBeNull();
+    expect(container.querySelector("#simple-meal-2")).toBeNull();
     await typeInto("#simple-guest-1", "");
     const calls = stubPersonalApi(() => ({}));
     await click(buttonNamed("Send RSVP"));
@@ -265,14 +284,17 @@ describe("personal link form in the browser (PL-6)", () => {
         ...PENDING,
         status: "attending",
         guestNames: body.guestNames,
-        dietary: body.dietary ?? "",
+        dietary: "1 vegetarian",
+        mealPreferences: body.mealPreferences,
       },
     }));
     render(personalPage({ language: "en" }));
     await click(buttonNamed("Confirm Attendance"));
     await click(buttonNamed("Yes, I'll attend"));
     await typeInto("#simple-guest-2", "Ibu Wati");
-    await typeInto("#simple-dietary", "Vegetarian");
+    // The dropdown names the person as typed.
+    expect(container.querySelector("label[for='simple-meal-2'] > span")?.textContent).toBe("Ibu Wati");
+    await choose("#simple-meal-2", "vegetarian");
     await click(buttonNamed("Send RSVP"));
     expect(calls).toEqual([
       {
@@ -282,7 +304,7 @@ describe("personal link form in the browser (PL-6)", () => {
           attending: true,
           guestCount: 2,
           guestNames: ["Bp. Hadi", "Ibu Wati"],
-          dietary: "Vegetarian",
+          mealPreferences: ["non_vegetarian", "vegetarian"],
           email: "",
           website: "",
           language: "en",
@@ -301,7 +323,8 @@ describe("personal link form in the browser (PL-6)", () => {
     expect(text).toContain("Attending · 2 people: Bp. Hadi, Ibu Wati");
     expect(buttonNamed("Yes, I'll attend").getAttribute("aria-pressed")).toBe("true");
     expect(value("#simple-guest-2")).toBe("Ibu Wati");
-    expect(value("#simple-dietary")).toBe("Vegetarian");
+    expect(value("#simple-meal-1")).toBe("non_vegetarian");
+    expect(value("#simple-meal-2")).toBe("vegetarian");
   });
 });
 

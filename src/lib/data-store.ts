@@ -1262,18 +1262,22 @@ export async function submitPersonalRsvp(
         .slice(0, submission.guestCount)
         .map((name) => name.trim())
     : invitation.guests.map((guest) => guest.name);
+  // DT-1: each person's dropdown choice; a "No" clears them, so a party that
+  // isn't coming is not counted in admin's vegetarian meals.
+  const mealFor = (index: number): Guest["mealPreference"] =>
+    (submission.attending && submission.mealPreferences?.[index]) || "unset";
   const guests: Guest[] = names.map((name, index) => {
     const existing = invitation.guests[index];
     if (existing) {
       return submission.attending
-        ? { ...existing, name, mealPreference: "unset" }
-        : existing;
+        ? { ...existing, name, mealPreference: mealFor(index) }
+        : { ...existing, mealPreference: "unset" };
     }
     return {
       id: `${invitation.id}-guest-${Date.now()}-${index + 1}`,
       invitationGroupId: invitation.id,
       name,
-      mealPreference: "unset",
+      mealPreference: mealFor(index),
     };
   });
   const existingIds = new Set(invitation.guests.map((guest) => guest.id));
@@ -1465,8 +1469,9 @@ export async function createSelfRegisteredInvitation(
 /**
  * SF-4: a registration from the simple form (no email code). "Yes" = the
  * dinner reception only; the registrant plus auto-named extra seats like the
- * headcount mode; meals stay "unset" (the form doesn't ask, so B12 does not
- * apply); a dietary note becomes the RSVP message. Saved through the same
+ * headcount mode; DT-1: each person's meal is their dietary dropdown choice
+ * ("unset" from older pages, so B12 does not apply); the dietary note
+ * ("N vegetarian") becomes the RSVP message. Saved through the same
  * insert and retries as any self-registration. `existing` = the email was
  * already registered (unique-index race): nothing new was saved.
  */
@@ -1531,7 +1536,9 @@ export async function createSimpleRegisteredInvitation(
       id: `${id}-guest-${index + 1}`,
       invitationGroupId: id,
       name: guestName,
-      mealPreference: "unset",
+      // DT-1: the dropdown's choice for this person (older pages: unset).
+      mealPreference:
+        (submission.attending && submission.mealPreferences?.[index]) || "unset",
     })),
     ...(linkDeadline ? { rsvpDeadline: linkDeadline } : {}),
   };

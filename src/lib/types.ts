@@ -6,6 +6,9 @@ export type EventKey = "holy_matrimony" | "tea_lunch" | "dinner";
 
 export type MealPreference = "vegetarian" | "non_vegetarian" | "unset";
 
+/** DT-1: a guest's answer to the simple form's dietary dropdown. */
+export type MealChoice = Exclude<MealPreference, "unset">;
+
 export type RsvpStatus = "pending" | "attending" | "declined";
 
 /** LR-1: where a guest stands: before their deadline, in the late window, or closed. */
@@ -329,6 +332,12 @@ export interface SimpleRsvpSubmission {
   guestCount: number;
   /** PL-4: every person's name, the guest first; absent from older pages. */
   guestNames?: string[];
+  /**
+   * DT-1: one dietary choice per person, in guestNames' order. When sent,
+   * `dietary` becomes "N vegetarian" (or nothing) from these.
+   */
+  mealPreferences?: MealChoice[];
+  /** The "Dietary: …" note; older pages sent free text. */
   dietary?: string;
   /** Honeypot: people never fill it. */
   website?: string;
@@ -349,6 +358,11 @@ export interface PersonalInvite {
   status: RsvpStatus;
   /** The "Dietary: …" note without its label; "" when there is none. */
   dietary: string;
+  /**
+   * DT-1: the dropdown's starting choice for each possible person (maxGuests
+   * long): the party's saved choices, else the note's "N vegetarian".
+   */
+  mealPreferences: MealChoice[];
 }
 
 /** PL-3: a validated POST /api/rsvp/personal body. */
@@ -359,6 +373,8 @@ export interface PersonalRsvpSubmission {
   guestCount: number;
   /** One name per person when attending. */
   guestNames: string[];
+  /** DT-1: one dietary choice per person, as on the simple form. */
+  mealPreferences?: MealChoice[];
   dietary?: string;
   /** Optional; only for the confirmation email. */
   email?: string;

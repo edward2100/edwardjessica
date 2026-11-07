@@ -90,7 +90,10 @@ test("/JESSmarriED: the full page with The Day's Events, and an RSVP without an 
   await page.getByLabel(en.simpleHowMany).selectOption("2");
   // PL-4: the second person is named too.
   await page.getByLabel("Guest 2 name").fill(`Plus One ${suffix}`);
-  await page.getByLabel(en.simpleDietary).fill("Vegetarian");
+  // DT-1: a Vegetarian / Non-vegetarian dropdown per person, named as typed.
+  await expect(page.getByText(en.simpleDietary, { exact: true })).toBeVisible();
+  await expect(page.locator("label[for='simple-meal-2'] > span")).toHaveText(`Plus One ${suffix}`);
+  await page.locator("#simple-meal-1").selectOption("vegetarian");
   await page.getByRole("button", { name: en.saveRsvp }).click();
 
   await expect(page.getByRole("heading", { name: "Thank you, Simple!" })).toBeVisible();
@@ -104,7 +107,7 @@ test("/JESSmarriED: the full page with The Day's Events, and an RSVP without an 
   await expect(page.locator('#rsvp a[href="/calendar.ics"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: en.viewYourInvite })).toHaveCount(0);
 
-  // Saved for the couple: the dinner only, meals unset, the note, no deadline.
+  // Saved for the couple: the dinner only, each meal, the note, no deadline.
   const exported = await admin.get("/api/admin/export?format=json");
   const snapshot = (await exported.json()) as AdminSnapshot;
   const saved = snapshot.invitations.find((invitation) => invitation.email === email);
@@ -117,12 +120,12 @@ test("/JESSmarriED: the full page with The Day's Events, and an RSVP without an 
     rsvp: {
       status: "attending",
       eventAttendance: { dinner: true },
-      message: "Dietary: Vegetarian",
+      message: "Dietary: 1 vegetarian",
     },
   });
   expect(saved!.guests.map((guest) => [guest.name, guest.mealPreference])).toEqual([
-    [guestName, "unset"],
-    [`Plus One ${suffix}`, "unset"],
+    [guestName, "vegetarian"],
+    [`Plus One ${suffix}`, "non_vegetarian"],
   ]);
 });
 
@@ -239,7 +242,10 @@ test("a personal link: the guest's name on the cover and hero, a prefilled RSVP 
     await expect(page.getByLabel(id.personalGuestCount)).toHaveValue("2");
     await expect(page.getByLabel("Nama tamu 1")).toHaveValue("Bp. Hadi");
     await expect(page.getByLabel("Nama tamu 2")).toHaveValue("Istri");
-    await expect(page.getByLabel(id.simpleDietary)).toHaveValue("1 vegetarian");
+    // DT-1: the sheet's "1 vegetarian" starts the first dropdown on Vegetarian.
+    await expect(page.locator("label[for='simple-meal-1'] > span")).toHaveText("Bp. Hadi");
+    await expect(page.locator("#simple-meal-1")).toHaveValue("vegetarian");
+    await expect(page.locator("#simple-meal-2")).toHaveValue("non_vegetarian");
     await page.getByLabel("Nama tamu 2").fill("Ibu Wati");
     await page.getByRole("button", { name: id.saveRsvp }).click();
     await expect(
@@ -262,7 +268,10 @@ test("a personal link: the guest's name on the cover and hero, a prefilled RSVP 
         message: "Dietary: 1 vegetarian",
       },
     });
-    expect(saved!.guests.map((guest) => guest.name)).toEqual(["Bp. Hadi", "Ibu Wati"]);
+    expect(saved!.guests.map((guest) => [guest.name, guest.mealPreference])).toEqual([
+      ["Bp. Hadi", "vegetarian"],
+      ["Ibu Wati", "non_vegetarian"],
+    ]);
 
     // A refresh shows the cover again, then the saved answer.
     await page.reload();

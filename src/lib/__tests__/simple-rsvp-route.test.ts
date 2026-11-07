@@ -182,6 +182,38 @@ describe("POST /api/rsvp/simple (SF-4)", () => {
     expect(email.html).not.toMatch(/dinner|calendar|\/invite\/|\d{1,2}:\d{2}/i);
   });
 
+  it("DT-1: the dietary dropdowns save each person's meal and the note \"N vegetarian\", shown in the email", async () => {
+    const body = rsvp({
+      name: "Dropdown Guest",
+      guestNames: ["Dropdown Guest", "Budi Tan"],
+      mealPreferences: ["vegetarian", "non_vegetarian"],
+      dietary: undefined,
+    });
+    expect((await post(body)).status).toBe(200);
+    const invitation = await savedFor(body.email);
+    expect(invitation!.guests.map((guest) => [guest.name, guest.mealPreference])).toEqual([
+      ["Dropdown Guest", "vegetarian"],
+      ["Budi Tan", "non_vegetarian"],
+    ]);
+    expect(invitation!.rsvp.message).toBe("Dietary: 1 vegetarian");
+    expect(sentEmail().html).toContain("Dietary requirements:</strong> 1 vegetarian");
+
+    // Nobody vegetarian: the meals are saved, with no note and no email line.
+    fetchMock.mockClear();
+    const plain = rsvp({
+      name: "Plain Guest",
+      guestCount: 1,
+      guestNames: ["Plain Guest"],
+      mealPreferences: ["non_vegetarian"],
+      dietary: undefined,
+    });
+    expect((await post(plain)).status).toBe(200);
+    const plainInvitation = await savedFor(plain.email);
+    expect(plainInvitation!.guests.map((guest) => guest.mealPreference)).toEqual(["non_vegetarian"]);
+    expect(plainInvitation!.rsvp.message).toBeUndefined();
+    expect(sentEmail().html).not.toContain("Dietary requirements");
+  });
+
   it("an email that already has an RSVP (any invitation, any case) changes nothing and sends nothing", async () => {
     const hardwinBefore = await getInvitationByCode("EJ26-HARDWIN");
     const before = (await getInvitations()).length;
