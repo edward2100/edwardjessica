@@ -32,12 +32,15 @@ export function GuestMenu({
   discoverHref,
   flow,
   invitationHref,
+  invitationOnly = false,
   language,
   travelHref,
 }: {
   discoverHref?: string;
   flow: PublicInviteFlow;
   invitationHref: string;
+  /** SL-1: /JESSmarriED links (and their personal links) list only the invitation. */
+  invitationOnly?: boolean;
   language: Language;
   travelHref?: string;
 }) {
@@ -51,18 +54,21 @@ export function GuestMenu({
   ];
 
   // Travel & Accommodation is only relevant to out-of-town guests.
-  if (flow !== "generic") {
+  if (flow !== "generic" && !invitationOnly) {
     items.push({
       href: travelHref || invitationHref,
       label: labels.travel,
     });
   }
 
-  // Discover Medan is offered to every flow, including generic.
-  items.push({
-    href: discoverHref || invitationHref,
-    label: labels.discover,
-  });
+  // Discover Medan is offered to every flow, including generic, except on the
+  // /JESSmarriED links (SL-1).
+  if (!invitationOnly) {
+    items.push({
+      href: discoverHref || invitationHref,
+      label: labels.discover,
+    });
+  }
 
   return (
     <nav className="guest-menu" aria-label={labels.menu}>

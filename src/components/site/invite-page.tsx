@@ -446,13 +446,6 @@ export function InvitePage({
         </div>
       </section>
 
-      {/* DC-1: what to wear to the dinner reception (dinner guests only). */}
-      <DressCodeSection
-        event={eligibleEvents.find((eventItem) => eventItem.key === "dinner")}
-        language={language}
-        labels={c}
-      />
-
       <StorySection content={content} language={language} />
 
       {content.gallery.length ? (
@@ -462,6 +455,13 @@ export function InvitePage({
           </div>
         </section>
       ) : null}
+
+      {/* DC-1: what to wear to the dinner reception (dinner guests only). Last, right before the RSVP. */}
+      <DressCodeSection
+        event={eligibleEvents.find((eventItem) => eventItem.key === "dinner")}
+        language={language}
+        labels={c}
+      />
 
       <section className="section" id="rsvp">
         <div className="page-shell">
