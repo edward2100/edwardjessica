@@ -15,6 +15,20 @@ import { weddingContent } from "@/lib/wedding-content";
 // DC-1: the dinner reception dress code section, a short description.
 const FUTURE = "2099-12-31T16:59:59.000Z";
 const dinner = weddingContent.events.find((eventItem) => eventItem.key === "dinner")!;
+/**
+ * Where the section sits: after the story and the gallery, and the very next
+ * section is the RSVP.
+ */
+function expectLastBeforeRsvp(html: string) {
+  const dressCode = html.indexOf('id="dress-code"');
+  expect(dressCode).toBeGreaterThan(html.indexOf(copy.en.scheduleTitle));
+  expect(dressCode).toBeGreaterThan(html.indexOf("Our Story"));
+  expect(dressCode).toBeGreaterThan(html.lastIndexOf("gallery-item"));
+  expect(html.indexOf("<section", dressCode)).toBe(
+    html.indexOf('<section class="section" id="rsvp">'),
+  );
+}
+
 /** The dress code paragraph's text (its nowrap spans removed). */
 function textOf(html: string) {
   const start = html.indexOf('<p class="dress-code-text">');
@@ -91,19 +105,16 @@ describe("DC-1: dress code section", () => {
     ).toBe("");
   });
 
-  it("public links: right after The Day's Events, before the story and the RSVP", () => {
+  it("public links: last, after the story and the gallery, right before the RSVP", () => {
+    expect(weddingContent.gallery.length).toBeGreaterThan(0);
     const html = renderWithRouter(
       <SelfRegisterInvitePage
         content={toGuestContent(weddingContent, FUTURE)}
         inviteType={generalLink}
       />,
     );
-    const schedule = html.indexOf(copy.en.scheduleTitle);
-    const dressCode = html.indexOf('id="dress-code"');
-    expect(schedule).toBeGreaterThan(-1);
-    expect(dressCode).toBeGreaterThan(schedule);
-    expect(dressCode).toBeLessThan(html.indexOf("Our Story"));
-    expect(dressCode).toBeLessThan(html.indexOf('id="rsvp"'));
+    expect(html).toContain("gallery-item");
+    expectLastBeforeRsvp(html);
   });
 
   it.each([
@@ -124,9 +135,7 @@ describe("DC-1: dress code section", () => {
   it("personal invites: shown to dinner guests, hidden from guests not invited to the dinner", () => {
     const withDinner = invitePage(invitation("EJ26-HARDWIN"));
     expect(withDinner).toContain('id="dress-code"');
-    expect(withDinner.indexOf('id="dress-code"')).toBeGreaterThan(
-      withDinner.indexOf(copy.en.scheduleTitle),
-    );
+    expectLastBeforeRsvp(withDinner);
 
     const morningOnly = invitePage(invitation("EJ26-HARDWIN", ["holy_matrimony", "tea_lunch"]));
     expect(morningOnly).toContain(copy.en.scheduleTitle);

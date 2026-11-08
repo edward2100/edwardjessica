@@ -495,6 +495,7 @@ export function SelfRegisterInvitePage({
         discoverHref={currentDiscoverHref}
         flow={inviteType.flow}
         invitationHref={currentInvitationHref}
+        invitationOnly={isSimpleForm}
         language={language}
         travelHref={currentTravelHref}
       />
@@ -648,13 +649,6 @@ export function SelfRegisterInvitePage({
         </section>
       ) : null}
 
-      {/* DC-1: what to wear to the dinner reception. */}
-      <DressCodeSection
-        event={content.events.find((eventItem) => eventItem.key === "dinner")}
-        language={language}
-        labels={c}
-      />
-
       <StorySection content={content} language={language} />
 
       {content.gallery.length ? (
@@ -664,6 +658,13 @@ export function SelfRegisterInvitePage({
           </div>
         </section>
       ) : null}
+
+      {/* DC-1: what to wear to the dinner reception. Last, right before the RSVP. */}
+      <DressCodeSection
+        event={content.events.find((eventItem) => eventItem.key === "dinner")}
+        language={language}
+        labels={c}
+      />
 
       <section className="section" id="rsvp">
         <div className="page-shell">

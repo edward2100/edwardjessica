@@ -630,21 +630,28 @@ describe("simple form in the browser (SF-3)", () => {
     expect(container.querySelector("#simple-name")).not.toBeNull();
   });
 
-  it("the menu and Discover Medan return to the custom address", async () => {
+  it("SL-1: the /JESSmarriED menu lists only the invitation; the standard link keeps Discover Medan", async () => {
+    const menuLinks = () =>
+      Object.fromEntries(
+        [...container.querySelectorAll<HTMLAnchorElement>(".guest-menu-link")].map((link) => [
+          link.textContent,
+          link.getAttribute("href"),
+        ]),
+      );
     stubFetch({});
     render(linkPage());
     await click(container.querySelector<HTMLButtonElement>(".guest-menu-button")!);
-    const links = Object.fromEntries(
-      [...container.querySelectorAll<HTMLAnchorElement>(".guest-menu-link")].map((link) => [
-        link.textContent,
-        link.getAttribute("href"),
-      ]),
-    );
-    expect(links).toEqual({
-      Invitation: "/JESSmarriED",
-      "Discover Medan": "/discover-medan?flow=generic&link=JESSMARRIED-SIMPLE",
-    });
+    expect(menuLinks()).toEqual({ Invitation: "/JESSmarriED" });
     act(() => root?.unmount());
+
+    render(linkPage({ link: GENERAL }));
+    await click(container.querySelector<HTMLButtonElement>(".guest-menu-button")!);
+    expect(Object.keys(menuLinks())).toEqual(["Invitation", "Discover Medan"]);
+    act(() => root?.unmount());
+  });
+
+  it("the Discover Medan page still leads back to the custom address", async () => {
+    stubFetch({});
 
     render(
       withRouter(

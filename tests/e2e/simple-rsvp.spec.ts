@@ -80,6 +80,11 @@ test("/JESSmarriED: the full page with The Day's Events, and an RSVP without an 
   }
   await expect(page.locator('a[href="/calendar.ics"]')).toHaveCount(2);
 
+  // SL-1: the menu lists only the invitation (no Discover Medan).
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator(".guest-menu-link")).toHaveText(["Invitation"]);
+  await page.getByRole("button", { name: "Close menu" }).click();
+
   // DC-1: the dinner's dress code, in a few words.
   const dressCode = page.locator("#dress-code");
   await dressCode.scrollIntoViewIfNeeded();
@@ -147,6 +152,10 @@ test("/jessmarried, /JESSMARRIED and /invite/JESSMARRIED keep the standard form"
     }
     await expect(page.locator('a[href="/calendar.ics"]')).toHaveCount(2);
     await expect(page.locator("#dress-code"), path).toBeVisible();
+    // SL-1: the standard links keep Discover Medan in the menu.
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(page.locator(".guest-menu-link"), path).toHaveText(["Invitation", "Discover Medan"]);
+    await page.getByRole("button", { name: "Close menu" }).click();
     await page.getByRole("button", { name: en.registerRsvp }).click();
     await expect(page.getByRole("button", { name: en.sendCode }), path).toBeVisible();
     await expect(page.getByLabel(en.emailAddress)).toBeVisible();
@@ -241,6 +250,10 @@ test("a personal link: the guest's name on the cover and hero, a prefilled RSVP 
     await page.getByRole("button", { name: id.tapToOpen }).click();
     await expect(cover).toHaveCount(0);
     await expect(page.locator(".hero-guest-name")).toHaveText("Bp. Hadi & Istri");
+    // SL-1: personal links list only the invitation in the menu too.
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(page.locator(".guest-menu-link")).toHaveText(["Undangan"]);
+    await page.getByRole("button", { name: "Tutup menu" }).click();
     // DC-1: personal links show the dinner dress code too (in Indonesian here).
     await expect(
       page.locator("#dress-code").getByText(id.dressCodeText, { exact: true }),
