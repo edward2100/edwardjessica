@@ -110,8 +110,9 @@ export default async function Page({
   const invitation = personal ? await getPersonalInvitation(personal.code) : null;
   if (!personal || !invitation) notFound();
   await recordInviteOpen(invitation.code);
-  // PL-6: these links open in Indonesian unless the guest chose a language.
-  const initialLanguage = (await getLanguagePreference()) ?? "id";
+  // EN-1: like every guest page, these links open in the site's default
+  // language (English) unless the guest chose one (EN/ID toggle).
+  const initialLanguage = await getLanguagePreference();
   return (
     <SelfRegisterInvitePage
       content={toGuestContent(

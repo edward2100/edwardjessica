@@ -242,13 +242,16 @@ test("a personal link: the guest's name on the cover and hero, a prefilled RSVP 
   try {
     // Reduced motion stops the monogram's pulse, so it can be clicked.
     await page.emulateMedia({ reducedMotion: "reduce" });
-    // Opens in Indonesian with the name on the cover.
+    // EN-1: opens in English (the site default) with the name on the cover.
     await page.goto(`/JESSmarriED-${personalSuffix}`);
     const cover = page.locator(".opening-cover");
-    await expect(cover.getByText(id.coverGreeting, { exact: true })).toBeVisible();
+    await expect(cover.getByText(en.coverGreeting, { exact: true })).toBeVisible();
     await expect(cover.getByText("Bp. Hadi & Istri", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: id.tapToOpen }).click();
+    await page.getByRole("button", { name: en.tapToOpen }).click();
     await expect(cover).toHaveCount(0);
+    // The guest can switch to Indonesian at the top of the page; the choice is kept.
+    await page.locator(".hero").getByRole("button", { name: "ID", exact: true }).click();
+    await expect(page.getByRole("button", { name: id.registerRsvp })).toBeVisible();
     await expect(page.locator(".hero-guest-name")).toHaveText("Bp. Hadi & Istri");
     // SL-1: personal links list only the invitation in the menu too.
     await page.getByRole("button", { name: "Menu" }).click();
