@@ -616,15 +616,22 @@ function digestOf(run: () => Promise<unknown>) {
 }
 
 describe("personal link routes (PL-1)", () => {
-  it("/JESSmarriED-2295A3FMJQWX opens the simple link's page with the guest's invite, in Indonesian", async () => {
+  it("/JESSmarriED-2295A3FMJQWX opens the simple link's page with the guest's invite, in English unless the guest chose a language", async () => {
     const page = (await SlugPage({ params: Promise.resolve({ slug: "JESSmarriED-2295A3FMJQWX" }) })) as {
-      props: { inviteType: PublicInviteType; personal: PersonalInvite; initialLanguage: string };
+      props: {
+        content: { defaultLanguage: string };
+        inviteType: PublicInviteType;
+        personal: PersonalInvite;
+        initialLanguage: string | null;
+      };
     };
     expect(page.props.inviteType.code).toBe("JESSMARRIED-SIMPLE");
     expect(page.props.personal).toEqual(
       toPersonalInvite((await getInvitationByCode("JESSMARRIED-2295A3FMJQWX"))!),
     );
-    expect(page.props.initialLanguage).toBe("id");
+    // EN-1: no saved choice, so the page uses the site default (English).
+    expect(page.props.initialLanguage).toBeNull();
+    expect(page.props.content.defaultLanguage).toBe("en");
     // The link's own address is unchanged (no personal invite).
     const link = (await SlugPage({ params: Promise.resolve({ slug: "JESSmarriED" }) })) as {
       props: { personal?: PersonalInvite };
